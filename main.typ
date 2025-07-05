@@ -1,16 +1,16 @@
 #import "@local/simple-note:0.0.1": *
 #import "@preview/cetz:0.3.4": canvas, draw
-#import "@preview/cetz-plot:0.1.1": plot, chart
-#show: codly-init.with()
+#import "@preview/cetz-plot:0.1.1": chart, plot
 
+#show: zebraw
 #show: simple-note.with(
   title: [ Image Processing ],
   date: datetime(year: 2025, month: 2, day: 17),
   authors: (
     (
       name: "Rao",
-      github: "https://github.com/Raopend",
-      homepage: "https://github.com/Raopend",
+      github: "https://github.com/Peng-Rao",
+      homepage: "https://github.com/Peng-Rao",
     ),
   ),
   affiliations: (
@@ -43,7 +43,7 @@ Sparsity is used to *prevent overfitting and improve interpretability of learned
 Signals are approximated by sparse linear combinations of *prototypes*(basis elements / atoms of a dictionary), resulting in simpler and compact model.
 
 #figure(
-  image("figures/enforce-sparsity.png", width: 80%),
+  image("figures/enforce-sparsity.png"),
   caption: "Enforce sparsity in signal processing",
 )
 
@@ -141,9 +141,11 @@ Properties of the this estimator:
 - *Reduced Variance:* $"Var"[hat(y)] = sigma^2 / M$
 
 *Limitations:* Local averaging introduces _bias_ at edges:
-#nonum($
-  "Bias" = abs(EE[hat(y)] - y) >> 0 "at discontinuities"
-$)
+#nonum(
+  $
+    "Bias" = abs(EE[hat(y)] - y) >> 0 "at discontinuities"
+  $,
+)
 
 #figure(
   canvas({
@@ -265,8 +267,8 @@ $
 Apply hard thresholding with universal threshold $gamma = 3sigma$:
 $
   hat(X)_(i,j)(u,v) = cases(
-    X_(i,j)(u,v) quad &"if " abs(X_(i,j)(u,v)) >= gamma,
-    0 quad &"otherwise"
+    X_(i,j)(u,v) quad & "if " abs(X_(i,j)(u,v)) >= gamma,
+    0 quad & "otherwise"
   )
 $
 
@@ -320,3 +322,36 @@ $
 $
 
 where $epsilon = 10^(-8)$ prevents division by zero, and $Omega_(m,n)$ denotes the set of patch positions $(i,j)$ that contain pixel $(m,n)$.
+
+#pagebreak()
+
+== Wiener Filter
+The *Wiener filter* is a powerful tool for image denoising, particularly when the noise characteristics are known. It operates in the frequency domain, leveraging the DCT coefficients to perform adaptive filtering based on local statistics.
+
+=== Empirical Wiener Filter
+Let $hat(bold(y))^"HT"$ be the *hard threshold estimate*, with DCT coefficients:
+$
+  hat(bold(x))^"HT" = D^T hat(bold(y))^"HT"
+$
+The empirical Wiener filter attenuates the DCT coefficients as:
+$
+  hat(x)^"Wie"_i = (hat(x)^"HT"_i)^2 / ((hat(x)^"HT"_i)^2 + sigma^2) x_i
+$
+The empirical Wiener estimate is thus:
+$
+  hat(bold(y))^"HT" = D hat(bold(x))^"Wie"
+$
+
+=== Transform Domain Patch Processing
+
+Given an image $bold(Y)$ of size $M times M$, we extract overlapping patches $bold(P)_(i,j)$ of size $p times p$ centered at pixel $(i,j)$:
+$
+  bold(P)_(i,j) = bold(Y)[i-floor(p/2) : i+floor(p/2), j-floor(p/2) : j+floor(p/2)]
+$
+
+For each patch $bold(P)_(i,j)$, we apply the following procedure:
++ *Vectorization*: Convert patch to vector $bold(p)_(i,j) in RR^(p^2)$
++ *Transformation*: Apply orthogonal transform $tilde(bold(p))_(i,j) = bold(T)bold(p)_(i,j)$
++ *Preliminary Estimation*: Obtain initial estimate $hat(tilde(bold(p)))_(i,j)^((0))$ using a simple denoising method
++ *Wiener Filtering*: Apply empirical Wiener filter coefficient-wise
++ *Inverse Transform*: Reconstruct patch $hat(bold(p))_(i,j) = bold(T)^(-1)hat(tilde(bold(p)))_(i,j)$
