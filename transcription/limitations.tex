@@ -1,0 +1,419 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\spn}{span}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\argmin}{argmin}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\N}{\mathbb{N}}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Sparse Representation and Redundant Dictionaries: From Orthonormal Bases to Overcomplete Systems}
+\author{Advanced Signal Processing Lecture}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% NOTE: This document comprehensively covers the transition from orthonormal bases to overcomplete dictionaries, emphasizing the theoretical foundations and practical implications of sparse representation theory.
+
+\section{Introduction and Motivation}
+
+The theory of sparse representation has emerged as a fundamental paradigm in modern signal processing, machine learning, and data analysis. This lecture establishes the theoretical foundations for understanding when and why we must abandon the comfort of orthonormal bases in favor of overcomplete dictionaries to achieve sparse representations.
+
+\subsection{Historical Context}
+
+The development of sparse representation theory represents a significant departure from classical linear algebra approaches. While traditional methods rely on orthonormal bases that guarantee unique, easily computable representations, real-world signals often exhibit structure that cannot be efficiently captured by any single orthonormal basis. This observation has led to the development of overcomplete dictionary methods, which sacrifice uniqueness and computational simplicity for the ability to provide sparse representations of complex signals.
+
+\subsection{Lecture Overview}
+
+This lecture covers the fundamental transition from orthonormal bases to overcomplete dictionaries, examining:
+\begin{itemize}
+    \item The limitations of orthonormal bases for sparse representation
+    \item The mathematical foundations of linear independence and span
+    \item The construction of overcomplete dictionaries
+    \item The resulting computational challenges and their solutions
+\end{itemize}
+
+\newpage
+
+\section{Fundamental Concepts in Linear Algebra}
+
+\subsection{Vector Spaces and Linear Combinations}
+
+\begin{definition}[Span of Vectors]
+    Given a set of vectors $\{\vec{v}_1, \vec{v}_2, \ldots, \vec{v}_n\} \subset \R^m$, the \textit{span} of these vectors is defined as:
+    \begin{equation}
+        \spn\{\vec{v}_1, \vec{v}_2, \ldots, \vec{v}_n\} = \left\{\sum_{i=1}^{n} \lambda_i \vec{v}_i : \lambda_i \in \R\right\}
+    \end{equation}
+\end{definition}
+
+The span represents the set of all possible linear combinations of the given vectors, forming a vector subspace of $\R^m$. This concept is fundamental to understanding how different sets of vectors can generate different subspaces.
+
+\subsection{Linear Independence and Basis}
+
+\begin{definition}[Linear Independence]
+    A set of vectors $\{\vec{v}_1, \vec{v}_2, \ldots, \vec{v}_n\}$ is \textit{linearly independent} if and only if:
+    \begin{equation}
+        \sum_{i=1}^{n} \lambda_i \vec{v}_i = \vec{0} \quad \Rightarrow \quad \lambda_i = 0 \text{ for all } i = 1, 2, \ldots, n
+    \end{equation}
+\end{definition}
+
+This definition captures the fundamental property that no vector in the set can be expressed as a linear combination of the others. The importance of linear independence becomes clear when we consider the uniqueness of representations.
+
+\begin{theorem}[Uniqueness of Representation]
+    \label{thm:uniqueness}
+    Let $\{\vec{e}_1, \vec{e}_2, \ldots, \vec{e}_n\} \subset \R^m$ be a linearly independent set of vectors. If $\vec{s} \in \spn\{\vec{e}_1, \vec{e}_2, \ldots, \vec{e}_n\}$, then there exists a unique representation:
+    \begin{equation}
+        \vec{s} = \sum_{i=1}^{n} x_i \vec{e}_i
+    \end{equation}
+    where the coefficients $x_i \in \R$ are uniquely determined.
+\end{theorem}
+
+\begin{proof}
+    Suppose $\vec{s}$ admits two different representations:
+    \begin{align}
+        \vec{s} & = \sum_{i=1}^{n} x_i \vec{e}_i \\
+        \vec{s} & = \sum_{i=1}^{n} y_i \vec{e}_i
+    \end{align}
+    Subtracting these equations:
+    \begin{equation}
+        \vec{0} = \sum_{i=1}^{n} (x_i - y_i) \vec{e}_i
+    \end{equation}
+    By linear independence, $(x_i - y_i) = 0$ for all $i$, implying $x_i = y_i$ for all $i$. Therefore, the representation is unique.
+\end{proof}
+
+\subsection{Orthonormal Bases and Their Properties}
+
+\begin{definition}[Orthonormal Basis]
+    A set of vectors $\{\vec{e}_1, \vec{e}_2, \ldots, \vec{e}_n\} \subset \R^n$ forms an \textit{orthonormal basis} if:
+    \begin{enumerate}
+        \item $\langle \vec{e}_i, \vec{e}_j \rangle = \delta_{ij}$ (orthonormality condition)
+        \item $\spn\{\vec{e}_1, \vec{e}_2, \ldots, \vec{e}_n\} = \R^n$ (spanning condition)
+    \end{enumerate}
+    where $\delta_{ij}$ is the Kronecker delta.
+\end{definition}
+
+The power of orthonormal bases lies in their computational convenience. For any signal $\vec{s} \in \R^n$ and orthonormal basis $\mathbf{D} = [\vec{e}_1, \vec{e}_2, \ldots, \vec{e}_n]$, the coefficient computation is straightforward:
+
+\begin{equation}
+    \vec{x} = \mathbf{D}^T \vec{s}
+\end{equation}
+
+where $\vec{x} = (x_1, x_2, \ldots, x_n)^T$ and $x_i = \langle \vec{e}_i, \vec{s} \rangle$.
+
+\newpage
+
+\section{Limitations of Orthonormal Bases}
+
+\subsection{The Sparsity Problem}
+
+While orthonormal bases provide computational convenience and guarantee unique representations, they suffer from a fundamental limitation: \textit{no single orthonormal basis can provide sparse representations for all signals of interest}.
+
+\begin{example}[DCT Basis Limitation]
+    Consider a signal $\vec{s}_0 \in \R^n$ that admits a sparse representation with respect to the Discrete Cosine Transform (DCT) basis $\mathbf{D}_{DCT}$:
+    \begin{equation}
+        \vec{s}_0 = \mathbf{D}_{DCT} \vec{x}_0
+    \end{equation}
+    where $\vec{x}_0$ is sparse (most entries are zero).
+
+    Now consider the modified signal:
+    \begin{equation}
+        \vec{s} = \vec{s}_0 + \lambda \vec{e}_j
+    \end{equation}
+    where $\vec{e}_j$ is the $j$-th canonical basis vector and $\lambda \in \R$ is a scaling factor.
+
+    The DCT representation of $\vec{s}$ becomes:
+    \begin{equation}
+        \vec{x} = \mathbf{D}_{DCT}^T \vec{s} = \mathbf{D}_{DCT}^T \vec{s}_0 + \lambda \mathbf{D}_{DCT}^T \vec{e}_j = \vec{x}_0 + \lambda \mathbf{D}_{DCT}^T \vec{e}_j
+    \end{equation}
+
+    Since $\mathbf{D}_{DCT}^T \vec{e}_j$ is typically dense (all entries are non-zero), the addition of a single spike destroys the sparsity of the representation.
+\end{example}
+
+\subsection{Mathematical Analysis of the Limitation}
+
+The fundamental issue can be understood through the lens of mutual coherence between different bases. The DCT basis and the canonical basis are \textit{maximally incoherent}, meaning that any vector sparse in one basis becomes dense in the other.
+
+\begin{definition}[Mutual Coherence]
+    Given two orthonormal bases $\mathbf{D}_1$ and $\mathbf{D}_2$, their mutual coherence is defined as:
+    \begin{equation}
+        \mu(\mathbf{D}_1, \mathbf{D}_2) = \max_{i,j} |\langle \vec{d}_{1,i}, \vec{d}_{2,j} \rangle|
+    \end{equation}
+    where $\vec{d}_{1,i}$ and $\vec{d}_{2,j}$ are columns of $\mathbf{D}_1$ and $\mathbf{D}_2$ respectively.
+\end{definition}
+
+For the DCT and canonical bases, $\mu(\mathbf{D}_{DCT}, \mathbf{I}) = 1/\sqrt{n}$, which is the maximum possible coherence for orthonormal bases in $\R^n$.
+
+\subsection{Experimental Demonstration}
+
+% NOTE: This section would typically include figures showing the DCT coefficients before and after adding a spike
+The experimental verification of this limitation involves:
+
+\begin{enumerate}
+    \item Generate a sparse signal $\vec{s}_0$ with respect to DCT basis
+    \item Add a single spike: $\vec{s} = \vec{s}_0 + \lambda \vec{e}_j$
+    \item Compute DCT coefficients of both signals
+    \item Observe the loss of sparsity in the modified signal
+\end{enumerate}
+
+The results consistently show that the addition of a single spike causes all DCT coefficients to become significant, effectively destroying the sparse structure that denoising algorithms rely upon.
+
+\newpage
+
+\section{Overcomplete Dictionaries: The Solution}
+
+\subsection{Motivation for Redundancy}
+
+The solution to the sparsity limitation lies in abandoning the constraint of orthonormality and embracing redundancy. Instead of using a single $n \times n$ orthonormal basis, we construct an $n \times m$ dictionary matrix $\mathbf{D}$ where $m > n$.
+
+\begin{definition}[Overcomplete Dictionary]
+    An \textit{overcomplete dictionary} is a matrix $\mathbf{D} \in \R^{n \times m}$ with $m > n$ such that:
+    \begin{equation}
+        \spn\{\vec{d}_1, \vec{d}_2, \ldots, \vec{d}_m\} = \R^n
+    \end{equation}
+    where $\vec{d}_i$ are the columns of $\mathbf{D}$.
+\end{definition}
+
+\subsection{Construction of Overcomplete Dictionaries}
+
+For the DCT-spike example, we construct the overcomplete dictionary by concatenating the DCT basis with the canonical basis:
+
+\begin{equation}
+    \mathbf{D} = [\mathbf{D}_{DCT} \mid \mathbf{I}] \in \R^{n \times 2n}
+\end{equation}
+
+This construction ensures that:
+\begin{itemize}
+    \item Signals sparse in DCT domain remain sparse
+    \item Signals sparse in canonical domain remain sparse
+    \item Mixed signals (DCT-sparse + spikes) admit sparse representations
+\end{itemize}
+
+\begin{example}[Sparse Representation with Overcomplete Dictionary]
+    Consider the signal $\vec{s} = \vec{s}_0 + \lambda \vec{e}_j$ where $\vec{s}_0 = \mathbf{D}_{DCT} \vec{x}_0$ with sparse $\vec{x}_0$.
+
+    The representation with respect to the overcomplete dictionary is:
+    \begin{equation}
+        \vec{s} = \mathbf{D} \begin{pmatrix} \vec{x}_0 \\ \lambda \vec{e}_j \end{pmatrix}
+    \end{equation}
+
+    The coefficient vector $\begin{pmatrix} \vec{x}_0 \\ \lambda \vec{e}_j \end{pmatrix} \in \R^{2n}$ is sparse, containing only the non-zero entries of $\vec{x}_0$ plus the single entry $\lambda$ at position $j$ in the second block.
+\end{example}
+
+\subsection{Theoretical Properties of Overcomplete Systems}
+
+\begin{theorem}[Rouché-Capelli Theorem]
+    \label{thm:rouche}
+    Consider the linear system $\mathbf{D}\vec{x} = \vec{s}$ where $\mathbf{D} \in \R^{n \times m}$ and $\vec{s} \in \R^n$. The system admits a solution if and only if:
+    \begin{equation}
+        \rank(\mathbf{D}) = \rank([\mathbf{D} \mid \vec{s}])
+    \end{equation}
+\end{theorem}
+
+When $m > n$ and $\rank(\mathbf{D}) = n$, the system has infinitely many solutions forming an affine subspace of dimension $m - n$.
+
+\begin{corollary}[Solution Space Dimension]
+    If $\mathbf{D} \in \R^{n \times m}$ with $m > n$ and $\rank(\mathbf{D}) = n$, then for any $\vec{s} \in \R^n$, the solution set of $\mathbf{D}\vec{x} = \vec{s}$ forms an affine subspace of dimension $m - n$.
+\end{corollary}
+
+\newpage
+
+\section{Regularization and Sparse Recovery}
+
+\subsection{The Ill-Posed Nature of Overcomplete Systems}
+
+The abundance of solutions in overcomplete systems necessitates additional criteria for solution selection. This is where regularization theory becomes essential.
+
+\begin{definition}[Regularization]
+    Given an ill-posed problem $\mathbf{D}\vec{x} = \vec{s}$ with multiple solutions, \textit{regularization} involves solving:
+    \begin{equation}
+        \hat{\vec{x}} = \argmin_{\vec{x}} J(\vec{x}) \quad \text{subject to} \quad \mathbf{D}\vec{x} = \vec{s}
+    \end{equation}
+    where $J: \R^m \to \R_+$ is a regularization functional encoding our prior knowledge about the desired solution.
+\end{definition}
+
+\subsection{$\ell_2$ Regularization: Ridge Regression}
+
+The most mathematically tractable regularization is the $\ell_2$ norm:
+
+\begin{equation}
+    J(\vec{x}) = \frac{1}{2}\|\vec{x}\|_2^2 = \frac{1}{2}\sum_{i=1}^{m} x_i^2
+\end{equation}
+
+This leads to the constrained optimization problem:
+\begin{equation}
+    \hat{\vec{x}} = \argmin_{\vec{x}} \frac{1}{2}\|\vec{x}\|_2^2 \quad \text{subject to} \quad \mathbf{D}\vec{x} = \vec{s}
+\end{equation}
+
+Alternatively, we can formulate the unconstrained version:
+\begin{equation}
+    \hat{\vec{x}} = \argmin_{\vec{x}} \frac{1}{2}\|\mathbf{D}\vec{x} - \vec{s}\|_2^2 + \frac{\lambda}{2}\|\vec{x}\|_2^2
+\end{equation}
+
+\subsection{Analytical Solution via Matrix Calculus}
+
+The unconstrained $\ell_2$ regularization problem admits a closed-form solution. To derive this, we use matrix calculus.
+
+\begin{theorem}[Ridge Regression Solution]
+    \label{thm:ridge}
+    The solution to the ridge regression problem:
+    \begin{equation}
+        \hat{\vec{x}} = \argmin_{\vec{x}} \frac{1}{2}\|\mathbf{D}\vec{x} - \vec{s}\|_2^2 + \frac{\lambda}{2}\|\vec{x}\|_2^2
+    \end{equation}
+    is given by:
+    \begin{equation}
+        \hat{\vec{x}} = (\mathbf{D}^T\mathbf{D} + \lambda \mathbf{I})^{-1} \mathbf{D}^T \vec{s}
+    \end{equation}
+    where $\lambda > 0$ ensures the matrix $(\mathbf{D}^T\mathbf{D} + \lambda \mathbf{I})$ is invertible.
+\end{theorem}
+
+\begin{proof}
+    Define the objective function:
+    \begin{equation}
+        f(\vec{x}) = \frac{1}{2}\|\mathbf{D}\vec{x} - \vec{s}\|_2^2 + \frac{\lambda}{2}\|\vec{x}\|_2^2
+    \end{equation}
+
+    Expanding the squared norms:
+    \begin{align}
+        f(\vec{x}) & = \frac{1}{2}(\mathbf{D}\vec{x} - \vec{s})^T(\mathbf{D}\vec{x} - \vec{s}) + \frac{\lambda}{2}\vec{x}^T\vec{x}                                      \\
+                   & = \frac{1}{2}\vec{x}^T\mathbf{D}^T\mathbf{D}\vec{x} - \vec{s}^T\mathbf{D}\vec{x} + \frac{1}{2}\vec{s}^T\vec{s} + \frac{\lambda}{2}\vec{x}^T\vec{x}
+    \end{align}
+
+    Taking the gradient with respect to $\vec{x}$:
+    \begin{equation}
+        \nabla f(\vec{x}) = \mathbf{D}^T\mathbf{D}\vec{x} - \mathbf{D}^T\vec{s} + \lambda\vec{x}
+    \end{equation}
+
+    Setting $\nabla f(\vec{x}) = \vec{0}$:
+    \begin{equation}
+        (\mathbf{D}^T\mathbf{D} + \lambda \mathbf{I})\vec{x} = \mathbf{D}^T\vec{s}
+    \end{equation}
+
+    Since $\lambda > 0$, the matrix $(\mathbf{D}^T\mathbf{D} + \lambda \mathbf{I})$ is positive definite and therefore invertible, yielding the stated solution.
+\end{proof}
+
+\subsection{Limitations of $\ell_2$ Regularization}
+
+While $\ell_2$ regularization provides a computationally efficient solution, it does not promote sparsity. The solution $\hat{\vec{x}}$ typically has all non-zero entries, which contradicts our goal of sparse representation.
+
+\begin{remark}[Sparsity vs. $\ell_2$ Regularization]
+    The $\ell_2$ norm penalizes large coefficients but does not drive small coefficients to zero. For sparse recovery, we need regularization functionals that promote sparsity, such as the $\ell_1$ norm or $\ell_0$ pseudo-norm.
+\end{remark}
+
+\newpage
+
+\section{Towards Sparsity: $\ell_0$ and $\ell_1$ Regularization}
+
+\subsection{The $\ell_0$ "Norm" and True Sparsity}
+
+The most natural regularization for sparse recovery is the $\ell_0$ "norm" (technically a pseudo-norm):
+
+\begin{equation}
+    \|\vec{x}\|_0 = |\{i : x_i \neq 0\}|
+\end{equation}
+
+This counts the number of non-zero entries in $\vec{x}$. The corresponding optimization problem:
+\begin{equation}
+    \hat{\vec{x}} = \argmin_{\vec{x}} \|\vec{x}\|_0 \quad \text{subject to} \quad \mathbf{D}\vec{x} = \vec{s}
+\end{equation}
+
+directly seeks the sparsest representation.
+
+\subsection{Computational Challenges}
+
+The $\ell_0$ minimization problem is NP-hard in general, making it computationally intractable for large-scale problems. This has led to the development of convex relaxations and approximation algorithms.
+
+\subsection{Future Directions}
+
+The next lectures will cover:
+\begin{itemize}
+    \item Sparse coding algorithms for $\ell_1$ regularization
+    \item Dictionary learning methods
+    \item Compressed sensing theory
+    \item Applications to signal processing and machine learning
+\end{itemize}
+
+\newpage
+
+\section{Summary and Conclusions}
+
+\subsection{Key Insights}
+
+This lecture has established several fundamental principles:
+
+\begin{enumerate}
+    \item \textbf{Orthonormal Basis Limitations}: No single orthonormal basis can provide sparse representations for all signals of interest.
+
+    \item \textbf{Overcomplete Dictionary Benefits}: Redundant dictionaries sacrifice uniqueness and computational simplicity but enable sparse representations for broader signal classes.
+
+    \item \textbf{Regularization Necessity}: The ill-posed nature of overcomplete systems requires regularization for meaningful solutions.
+
+    \item \textbf{Trade-offs}: We exchange the computational convenience of orthonormal bases for the representational power of overcomplete dictionaries.
+\end{enumerate}
+
+\subsection{Mathematical Framework Summary}
+
+The transition from orthonormal to overcomplete systems can be summarized as follows:
+
+\begin{center}
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Property}        & \textbf{Orthonormal Basis} & \textbf{Overcomplete Dictionary} \\
+        \midrule
+        Matrix Size              & $n \times n$               & $n \times m$ (where $m > n$)     \\
+        Linear Independence      & Yes                        & No                               \\
+        Uniqueness               & Yes                        & No                               \\
+        Computational Complexity & Low                        & High                             \\
+        Sparsity Guarantee       & No                         & Possible                         \\
+        Perfect Reconstruction   & Yes                        & Yes                              \\
+        \bottomrule
+    \end{tabular}
+\end{center}
+
+\subsection{Practical Implications}
+
+The theoretical framework developed here has immediate practical applications:
+
+\begin{itemize}
+    \item \textbf{Signal Denoising}: Overcomplete dictionaries can preserve both smooth regions and sharp features.
+    \item \textbf{Image Processing}: Different image structures (edges, textures, smooth regions) can be sparsely represented by different dictionary elements.
+    \item \textbf{Machine Learning}: Overcomplete representations can lead to better feature extraction and classification performance.
+\end{itemize}
+
+\subsection{Looking Forward}
+
+The mathematical foundations established in this lecture form the basis for understanding:
+\begin{itemize}
+    \item Advanced sparse coding algorithms
+    \item Dictionary learning methods
+    \item Compressed sensing theory
+    \item Applications in signal processing, image processing, and machine learning
+\end{itemize}
+
+The journey from orthonormal bases to overcomplete dictionaries represents a paradigm shift in signal representation theory, trading computational simplicity for representational power and opening new avenues for signal processing and analysis.
+
+\end{document}
