@@ -1,0 +1,505 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{tikz}
+\usetikzlibrary{matrix,positioning}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Mathematical notation customization
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\minimize}{minimize}
+\DeclareMathOperator{\subject}{subject\ to}
+\DeclareMathOperator{\argmin}{argmin}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Principal Component Analysis and Dimensionality Reduction:\\
+Mathematical Foundations and Algorithmic Implementation}
+\author{Course Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% NOTE: This document provides a comprehensive treatment of PCA theory derived from lecture content
+% All mathematical derivations are expanded with intermediate steps and formal proofs
+
+\section{Introduction to Dimensionality Reduction}
+
+The fundamental challenge in modern data analysis lies in handling high-dimensional datasets where the number of features often exceeds the number of observations. This phenomenon, commonly referred to as the \textit{curse of dimensionality}, necessitates sophisticated mathematical techniques for extracting meaningful patterns while preserving essential information.
+
+Principal Component Analysis (PCA) emerges as one of the most powerful and widely-used techniques for dimensionality reduction, providing both theoretical elegance and practical utility. At its core, PCA seeks to identify a lower-dimensional subspace that captures the maximum variance in the original data, thereby enabling efficient representation and analysis.
+
+\subsection{Motivation and Problem Statement}
+
+Consider a dataset consisting of $n$ observations in $d$-dimensional space, represented as column vectors $\{\vec{x}_1, \vec{x}_2, \ldots, \vec{x}_n\}$ where each $\vec{x}_i \in \mathbb{R}^d$. The central objective of dimensionality reduction is to find a mapping:
+
+\begin{equation}
+    \phi: \mathbb{R}^d \rightarrow \mathbb{R}^k
+\end{equation}
+
+where $k \ll d$, such that the essential structure of the data is preserved in the lower-dimensional representation.
+
+\paragraph{Key Challenges:}
+\begin{itemize}[noitemsep]
+    \item \textbf{Information Preservation}: Maintaining the most important characteristics of the original data
+    \item \textbf{Computational Efficiency}: Ensuring tractable algorithms for large-scale applications
+    \item \textbf{Interpretability}: Providing meaningful insights into the underlying data structure
+\end{itemize}
+
+\newpage
+
+\section{Mathematical Foundation: Regularized Linear Regression}
+
+% NOTE: This section provides the mathematical groundwork for understanding PCA through the lens of optimization theory
+
+\subsection{Vector Calculus and Matrix Derivatives}
+
+Before deriving the PCA algorithm, we must establish the mathematical framework for computing derivatives with respect to vectors and matrices. This foundation is essential for understanding the optimization procedures underlying dimensionality reduction techniques.
+
+\begin{definition}[Gradient with Respect to a Vector]
+    Given a scalar function $f: \mathbb{R}^n \rightarrow \mathbb{R}$, the gradient with respect to vector $\vec{x} = [x_1, x_2, \ldots, x_n]^T$ is defined as:
+    \begin{equation}
+        \nabla_{\vec{x}} f(\vec{x}) = \left[\frac{\partial f}{\partial x_1}, \frac{\partial f}{\partial x_2}, \ldots, \frac{\partial f}{\partial x_n}\right]^T
+    \end{equation}
+\end{definition}
+
+\subsubsection{Fundamental Derivative Rules}
+
+The following lemmas establish the basic rules for matrix calculus that are essential for PCA derivations:
+
+\begin{lemma}[Linear Function Derivative]
+    For a linear function $f(\vec{x}) = \vec{a}^T \vec{x}$ where $\vec{a}$ is a constant vector:
+    \begin{equation}
+        \nabla_{\vec{x}} (\vec{a}^T \vec{x}) = \vec{a}
+    \end{equation}
+\end{lemma}
+
+\begin{lemma}[Quadratic Form Derivative] \label{lem:quadratic}
+    For a quadratic function $f(\vec{x}) = \vec{x}^T \vec{A} \vec{x}$ where $\vec{A}$ is a symmetric matrix:
+    \begin{equation}
+        \nabla_{\vec{x}} (\vec{x}^T \vec{A} \vec{x}) = 2\vec{A}\vec{x}
+    \end{equation}
+\end{lemma}
+
+\begin{proof}[Proof of Lemma \ref{lem:quadratic}]
+    Consider the quadratic form $f(\vec{x}) = \vec{x}^T \vec{A} \vec{x} = \sum_{i=1}^n \sum_{j=1}^n A_{ij} x_i x_j$.
+
+    Taking the partial derivative with respect to $x_k$:
+    \begin{align}
+        \frac{\partial f}{\partial x_k} & = \frac{\partial}{\partial x_k} \left(\sum_{i=1}^n \sum_{j=1}^n A_{ij} x_i x_j\right) \\
+                                        & = \sum_{j=1}^n A_{kj} x_j + \sum_{i=1}^n A_{ik} x_i                                   \\
+                                        & = 2\sum_{j=1}^n A_{kj} x_j \quad \text{(since $\vec{A}$ is symmetric)}                \\
+                                        & = 2(\vec{A}\vec{x})_k
+    \end{align}
+
+    Therefore, $\nabla_{\vec{x}} f(\vec{x}) = 2\vec{A}\vec{x}$.
+\end{proof}
+
+\subsection{Regularized Least Squares Problem}
+
+% NOTE: This derivation provides the mathematical foundation for understanding optimization in high-dimensional spaces
+
+Consider the regularized least squares problem, which forms the basis for many dimensionality reduction techniques:
+
+\begin{equation}
+    \minimize_{\vec{w}} \quad \|\vec{y} - \vec{X}\vec{w}\|_2^2 + \lambda \|\vec{w}\|_2^2
+\end{equation}
+
+where:
+\begin{itemize}[noitemsep]
+    \item $\vec{y} \in \mathbb{R}^n$ is the target vector
+    \item $\vec{X} \in \mathbb{R}^{n \times d}$ is the design matrix
+    \item $\vec{w} \in \mathbb{R}^d$ is the parameter vector
+    \item $\lambda > 0$ is the regularization parameter
+\end{itemize}
+
+\subsubsection{Analytical Solution Derivation}
+
+The objective function can be written as:
+\begin{equation}
+    J(\vec{w}) = (\vec{y} - \vec{X}\vec{w})^T(\vec{y} - \vec{X}\vec{w}) + \lambda \vec{w}^T\vec{w}
+\end{equation}
+
+Expanding the first term:
+\begin{align}
+    (\vec{y} - \vec{X}\vec{w})^T(\vec{y} - \vec{X}\vec{w}) & = \vec{y}^T\vec{y} - 2\vec{y}^T\vec{X}\vec{w} + \vec{w}^T\vec{X}^T\vec{X}\vec{w}
+\end{align}
+
+Therefore, the complete objective function becomes:
+\begin{equation}
+    J(\vec{w}) = \vec{y}^T\vec{y} - 2\vec{y}^T\vec{X}\vec{w} + \vec{w}^T\vec{X}^T\vec{X}\vec{w} + \lambda \vec{w}^T\vec{w}
+\end{equation}
+
+Taking the gradient with respect to $\vec{w}$:
+\begin{align}
+    \nabla_{\vec{w}} J(\vec{w}) & = \nabla_{\vec{w}} (\vec{y}^T\vec{y}) - 2\nabla_{\vec{w}} (\vec{y}^T\vec{X}\vec{w}) + \nabla_{\vec{w}} (\vec{w}^T\vec{X}^T\vec{X}\vec{w}) + \lambda \nabla_{\vec{w}} (\vec{w}^T\vec{w}) \\
+                                & = 0 - 2\vec{X}^T\vec{y} + 2\vec{X}^T\vec{X}\vec{w} + 2\lambda \vec{w}                                                                                                                   \\
+                                & = -2\vec{X}^T\vec{y} + 2(\vec{X}^T\vec{X} + \lambda \vec{I})\vec{w}
+\end{align}
+
+Setting the gradient to zero for the optimal solution:
+\begin{equation}
+    2(\vec{X}^T\vec{X} + \lambda \vec{I})\vec{w}^* = 2\vec{X}^T\vec{y}
+\end{equation}
+
+\begin{theorem}[Regularized Least Squares Solution]
+    The optimal solution to the regularized least squares problem is given by:
+    \begin{equation} \label{eq:regularized_solution}
+        \boxed{\vec{w}^* = (\vec{X}^T\vec{X} + \lambda \vec{I})^{-1}\vec{X}^T\vec{y}}
+    \end{equation}
+    provided that $\lambda > 0$, ensuring the invertibility of the matrix $(\vec{X}^T\vec{X} + \lambda \vec{I})$.
+\end{theorem}
+
+\remark{The regularization term $\lambda \vec{I}$ ensures that the solution exists and is unique even when $\vec{X}^T\vec{X}$ is singular, which commonly occurs in high-dimensional settings where $d > n$.}
+
+\newpage
+
+\section{Principal Component Analysis: Theory and Derivation}
+
+% NOTE: This section provides a comprehensive treatment of PCA from first principles
+
+\subsection{Problem Formulation and Assumptions}
+
+Principal Component Analysis addresses the fundamental question: \textit{How can we find a lower-dimensional representation of high-dimensional data that preserves the maximum amount of variance?}
+
+\begin{definition}[PCA Problem Statement]
+    Given a dataset $\vec{X} = [\vec{x}_1, \vec{x}_2, \ldots, \vec{x}_n] \in \mathbb{R}^{d \times n}$ where each column represents an observation, find an orthogonal transformation $\vec{W} \in \mathbb{R}^{d \times k}$ (where $k < d$) such that the projected data $\vec{Y} = \vec{W}^T\vec{X}$ maximizes the variance in the lower-dimensional space.
+\end{definition}
+
+\subsubsection{Key Assumptions}
+
+The PCA framework relies on several fundamental assumptions:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Linear Subspace Assumption}: The data lies approximately in a $k$-dimensional linear subspace of $\mathbb{R}^d$
+    \item \textbf{Gaussian Distribution}: The data follows a multivariate Gaussian distribution (optimal for maximum variance preservation)
+    \item \textbf{Centered Data}: The data has been centered, i.e., $\sum_{i=1}^n \vec{x}_i = \vec{0}$
+    \item \textbf{Variance Maximization}: The most important information is captured by directions of maximum variance
+\end{enumerate}
+
+\subsection{Matrix Factorization Perspective}
+
+% NOTE: This approach provides intuitive understanding of PCA through matrix approximation
+
+From a matrix factorization viewpoint, PCA seeks to approximate the data matrix $\vec{X}$ as:
+
+\begin{equation}
+    \vec{X} \approx \vec{W}\vec{H}
+\end{equation}
+
+where:
+\begin{itemize}[noitemsep]
+    \item $\vec{W} \in \mathbb{R}^{d \times k}$ contains the principal components (basis vectors)
+    \item $\vec{H} \in \mathbb{R}^{k \times n}$ contains the coefficients (projected coordinates)
+    \item $k \ll d$ ensures dimensionality reduction
+\end{itemize}
+
+\subsubsection{Optimization Formulation}
+
+The optimal factorization is obtained by solving:
+
+\begin{equation}
+    \minimize_{\vec{W}, \vec{H}} \quad \|\vec{X} - \vec{W}\vec{H}\|_F^2 \quad \subject \quad \vec{W}^T\vec{W} = \vec{I}_k
+\end{equation}
+
+where $\|\cdot\|_F$ denotes the Frobenius norm and the constraint ensures orthonormality of the basis vectors.
+
+\begin{theorem}[PCA Optimization Problem] \label{thm:pca_optimization}
+    The PCA problem can be equivalently formulated as:
+    \begin{equation}
+        \minimize_{\vec{W}} \quad \|\vec{X} - \vec{W}\vec{W}^T\vec{X}\|_F^2 \quad \subject \quad \vec{W}^T\vec{W} = \vec{I}_k
+    \end{equation}
+\end{theorem}
+
+\begin{proof}
+    For a given $\vec{W}$, the optimal $\vec{H}$ is obtained by minimizing:
+    \begin{equation}
+        \|\vec{X} - \vec{W}\vec{H}\|_F^2 = \tr[(\vec{X} - \vec{W}\vec{H})^T(\vec{X} - \vec{W}\vec{H})]
+    \end{equation}
+
+    Taking the derivative with respect to $\vec{H}$ and setting it to zero:
+    \begin{align}
+        \frac{\partial}{\partial \vec{H}} \|\vec{X} - \vec{W}\vec{H}\|_F^2 & = -2\vec{W}^T\vec{X} + 2\vec{W}^T\vec{W}\vec{H} = 0          \\
+        \Rightarrow \vec{H}^*                                              & = (\vec{W}^T\vec{W})^{-1}\vec{W}^T\vec{X} = \vec{W}^T\vec{X}
+    \end{align}
+
+    where the last equality uses the orthonormality constraint $\vec{W}^T\vec{W} = \vec{I}_k$.
+\end{proof}
+
+\subsection{Eigenvalue Decomposition Solution}
+
+% NOTE: This is the classical approach to PCA through eigendecomposition
+
+The solution to the PCA optimization problem is intimately connected to the eigenvalue decomposition of the data covariance matrix.
+
+\begin{definition}[Sample Covariance Matrix]
+    For centered data $\vec{X}$, the sample covariance matrix is:
+    \begin{equation}
+        \vec{C} = \frac{1}{n-1}\vec{X}\vec{X}^T \in \mathbb{R}^{d \times d}
+    \end{equation}
+\end{definition}
+
+\begin{theorem}[PCA Solution via Eigendecomposition] \label{thm:pca_eigen}
+    The principal components are given by the eigenvectors of the covariance matrix $\vec{C}$ corresponding to the $k$ largest eigenvalues.
+
+    Specifically, if $\vec{C} = \vec{V}\vec{\Lambda}\vec{V}^T$ where $\vec{\Lambda} = \text{diag}(\lambda_1, \lambda_2, \ldots, \lambda_d)$ with $\lambda_1 \geq \lambda_2 \geq \cdots \geq \lambda_d \geq 0$, then:
+    \begin{equation}
+        \boxed{\vec{W} = [\vec{v}_1, \vec{v}_2, \ldots, \vec{v}_k]}
+    \end{equation}
+    where $\vec{v}_i$ is the eigenvector corresponding to $\lambda_i$.
+\end{theorem}
+
+\begin{proof}
+    We need to show that the eigenvectors of $\vec{C}$ solve the optimization problem in Theorem \ref{thm:pca_optimization}.
+
+    The objective function can be rewritten as:
+    \begin{align}
+        \|\vec{X} - \vec{W}\vec{W}^T\vec{X}\|_F^2 & = \tr[(\vec{X} - \vec{W}\vec{W}^T\vec{X})^T(\vec{X} - \vec{W}\vec{W}^T\vec{X})]                                          \\
+                                                  & = \tr[\vec{X}^T\vec{X}] - 2\tr[\vec{X}^T\vec{W}\vec{W}^T\vec{X}] + \tr[\vec{X}^T\vec{W}\vec{W}^T\vec{W}\vec{W}^T\vec{X}] \\
+                                                  & = \tr[\vec{X}^T\vec{X}] - 2\tr[\vec{X}^T\vec{W}\vec{W}^T\vec{X}] + \tr[\vec{X}^T\vec{W}\vec{W}^T\vec{X}]                 \\
+                                                  & = \tr[\vec{X}^T\vec{X}] - \tr[\vec{X}^T\vec{W}\vec{W}^T\vec{X}]
+    \end{align}
+
+    Since $\tr[\vec{X}^T\vec{X}]$ is constant, minimizing the objective is equivalent to maximizing:
+    \begin{equation}
+        \tr[\vec{X}^T\vec{W}\vec{W}^T\vec{X}] = \tr[\vec{W}^T\vec{X}\vec{X}^T\vec{W}] = (n-1)\tr[\vec{W}^T\vec{C}\vec{W}]
+    \end{equation}
+
+    Using Lagrange multipliers for the constraint $\vec{W}^T\vec{W} = \vec{I}_k$, the optimal $\vec{W}$ satisfies:
+    \begin{equation}
+        \vec{C}\vec{W} = \vec{W}\vec{\Lambda}_k
+    \end{equation}
+
+    where $\vec{\Lambda}_k$ is a diagonal matrix of eigenvalues. This confirms that the columns of $\vec{W}$ are eigenvectors of $\vec{C}$.
+\end{proof}
+
+\subsection{Variance Explained and Dimensionality Selection}
+
+% NOTE: This section addresses the practical question of choosing the number of components
+
+\begin{definition}[Explained Variance Ratio]
+    The proportion of total variance explained by the first $k$ principal components is:
+    \begin{equation}
+        \text{EVR}(k) = \frac{\sum_{i=1}^k \lambda_i}{\sum_{i=1}^d \lambda_i}
+    \end{equation}
+\end{definition}
+
+\begin{corollary}[Cumulative Variance Property]
+    The eigenvalues $\{\lambda_i\}$ represent the variance captured by each principal component, and:
+    \begin{equation}
+        \sum_{i=1}^d \lambda_i = \tr[\vec{C}] = \frac{1}{n-1}\sum_{i=1}^n \|\vec{x}_i\|_2^2
+    \end{equation}
+\end{corollary}
+
+\paragraph{Practical Dimensionality Selection Criteria:}
+\begin{enumerate}[noitemsep]
+    \item \textbf{Variance Threshold}: Choose $k$ such that $\text{EVR}(k) \geq 0.95$
+    \item \textbf{Elbow Method}: Select $k$ at the "elbow" of the eigenvalue plot
+    \item \textbf{Cross-Validation}: Use validation performance to guide selection
+\end{enumerate}
+
+\newpage
+
+\section{Computational Algorithms and Implementation}
+
+% NOTE: This section bridges theory with practical implementation considerations
+
+\subsection{Singular Value Decomposition Approach}
+
+While the eigendecomposition approach is theoretically elegant, the Singular Value Decomposition (SVD) provides a more numerically stable and computationally efficient alternative.
+
+\begin{theorem}[SVD-based PCA] \label{thm:svd_pca}
+    Given the centered data matrix $\vec{X} \in \mathbb{R}^{d \times n}$ with SVD $\vec{X} = \vec{U}\vec{\Sigma}\vec{V}^T$, the principal components are given by the first $k$ columns of $\vec{U}$:
+    \begin{equation}
+        \vec{W} = \vec{U}_{:,1:k}
+    \end{equation}
+    where the eigenvalues of the covariance matrix are $\lambda_i = \frac{\sigma_i^2}{n-1}$.
+\end{theorem}
+
+\begin{proof}
+    The covariance matrix can be expressed as:
+    \begin{align}
+        \vec{C} & = \frac{1}{n-1}\vec{X}\vec{X}^T                                           \\
+                & = \frac{1}{n-1}\vec{U}\vec{\Sigma}\vec{V}^T\vec{V}\vec{\Sigma}^T\vec{U}^T \\
+                & = \frac{1}{n-1}\vec{U}\vec{\Sigma}^2\vec{U}^T
+    \end{align}
+
+    This shows that $\vec{U}$ contains the eigenvectors of $\vec{C}$ and $\frac{\sigma_i^2}{n-1}$ are the corresponding eigenvalues.
+\end{proof}
+
+\subsection{Algorithmic Implementation}
+
+\begin{algorithm}[H]
+    \caption{Principal Component Analysis Algorithm}
+    \begin{algorithmic}[1]
+        \REQUIRE Data matrix $\vec{X} \in \mathbb{R}^{d \times n}$, number of components $k$
+        \ENSURE Principal components $\vec{W} \in \mathbb{R}^{d \times k}$, projected data $\vec{Y} \in \mathbb{R}^{k \times n}$
+        \STATE \textbf{Center the data:} $\vec{X} \leftarrow \vec{X} - \frac{1}{n}\vec{X}\vec{1}\vec{1}^T$
+        \STATE \textbf{Compute SVD:} $\vec{X} = \vec{U}\vec{\Sigma}\vec{V}^T$
+        \STATE \textbf{Extract components:} $\vec{W} \leftarrow \vec{U}_{:,1:k}$
+        \STATE \textbf{Project data:} $\vec{Y} \leftarrow \vec{W}^T\vec{X}$
+        \STATE \textbf{Compute explained variance:} $\text{EVR} \leftarrow \frac{\sum_{i=1}^k \sigma_i^2}{\sum_{i=1}^{\min(d,n)} \sigma_i^2}$
+        \RETURN $\vec{W}$, $\vec{Y}$, $\text{EVR}$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Computational Complexity Analysis}
+
+\begin{theorem}[Computational Complexity]
+    The computational complexity of PCA using SVD is:
+    \begin{equation}
+        \mathcal{O}(\min(d^2n, dn^2))
+    \end{equation}
+    where $d$ is the dimensionality and $n$ is the number of samples.
+\end{theorem}
+
+\paragraph{Memory Requirements:}
+\begin{itemize}[noitemsep]
+    \item \textbf{Storage}: $\mathcal{O}(dn + dk)$ for data matrix and principal components
+    \item \textbf{Working Memory}: $\mathcal{O}(d^2)$ for covariance matrix computation
+\end{itemize}
+
+\subsection{Numerical Stability Considerations}
+
+\begin{remark}[Numerical Stability]
+    The SVD-based approach is preferred over direct eigendecomposition for several reasons:
+    \begin{enumerate}[noitemsep]
+        \item Avoids explicit computation of $\vec{X}\vec{X}^T$, which can be ill-conditioned
+        \item Provides better numerical accuracy for nearly singular matrices
+        \item Handles the case where $d > n$ more efficiently
+    \end{enumerate}
+\end{remark}
+
+\newpage
+
+\section{Advanced Topics and Extensions}
+
+% NOTE: This section covers important extensions and practical considerations
+
+\subsection{Kernel PCA and Nonlinear Extensions}
+
+While classical PCA assumes linear relationships, many real-world datasets exhibit nonlinear structure. Kernel PCA extends the framework to capture nonlinear patterns.
+
+\begin{definition}[Kernel PCA]
+    Kernel PCA performs PCA in a feature space $\mathcal{F}$ induced by a kernel function $k(\vec{x}, \vec{y}) = \langle \phi(\vec{x}), \phi(\vec{y}) \rangle_{\mathcal{F}}$, where $\phi: \mathbb{R}^d \rightarrow \mathcal{F}$ is a potentially infinite-dimensional mapping.
+\end{definition}
+
+The kernel matrix $\vec{K} \in \mathbb{R}^{n \times n}$ with entries $K_{ij} = k(\vec{x}_i, \vec{x}_j)$ replaces the covariance matrix in the eigendecomposition:
+
+\begin{equation}
+    \vec{K}\vec{\alpha} = \lambda n \vec{\alpha}
+\end{equation}
+
+where $\vec{\alpha}$ contains the coefficients for expressing principal components in terms of the training data.
+
+\subsection{Incremental and Online PCA}
+
+For large-scale applications, batch PCA may be computationally prohibitive. Incremental PCA algorithms update the principal components as new data arrives.
+
+\begin{theorem}[Incremental PCA Update Rule]
+    Given existing principal components $\vec{W}^{(t)}$ and a new observation $\vec{x}_{t+1}$, the updated components can be computed using:
+    \begin{equation}
+        \vec{W}^{(t+1)} = \text{SVD}_k\left([\vec{W}^{(t)}, \vec{x}_{t+1}]\right)
+    \end{equation}
+    where $\text{SVD}_k$ denotes truncated SVD keeping only the first $k$ components.
+\end{theorem}
+
+\subsection{Robust PCA and Outlier Detection}
+
+Classical PCA is sensitive to outliers due to its reliance on second-order statistics. Robust PCA variants address this limitation.
+
+\begin{definition}[Robust PCA Problem]
+    Robust PCA decomposes the data matrix as:
+    \begin{equation}
+        \vec{X} = \vec{L} + \vec{S} + \vec{N}
+    \end{equation}
+    where:
+    \begin{itemize}[noitemsep]
+        \item $\vec{L}$ is a low-rank matrix (true signal)
+        \item $\vec{S}$ is a sparse matrix (outliers)
+        \item $\vec{N}$ is dense noise
+    \end{itemize}
+\end{definition}
+
+The optimization problem becomes:
+\begin{equation}
+    \minimize_{\vec{L}, \vec{S}} \quad \|\vec{L}\|_* + \lambda \|\vec{S}\|_1 \quad \subject \quad \vec{L} + \vec{S} = \vec{X}
+\end{equation}
+
+where $\|\cdot\|_*$ is the nuclear norm and $\|\cdot\|_1$ is the $\ell_1$ norm.
+
+\newpage
+
+\section{Applications and Case Studies}
+
+% NOTE: This section demonstrates practical applications of PCA across different domains
+
+\subsection{Image Processing and Computer Vision}
+
+In computer vision applications, PCA serves multiple purposes:
+
+\paragraph{Dimensionality Reduction:}
+Digital images with millions of pixels can be effectively represented using much fewer principal components. For an image dataset $\{\vec{I}_1, \vec{I}_2, \ldots, \vec{I}_n\}$ where each $\vec{I}_i \in \mathbb{R}^{h \times w}$ is vectorized, PCA finds the most significant visual patterns.
+
+\paragraph{Face Recognition (Eigenfaces):}
+The eigenfaces method represents facial images as linear combinations of principal components:
+\begin{equation}
+    \vec{I}_{\text{face}} \approx \vec{\mu} + \sum_{i=1}^k w_i \vec{v}_i
+\end{equation}
+where $\vec{\mu}$ is the mean face and $\vec{v}_i$ are the eigenfaces.
+
+\subsection{Financial Data Analysis}
+
+In quantitative finance, PCA is used for:
+
+\paragraph{Risk Factor Modeling:}
+Stock returns can be decomposed into systematic risk factors:
+\begin{equation}
+    \vec{r}_t = \vec{B}\vec{f}_t + \vec{\epsilon}_t
+\end{equation}
+where $\vec{f}_t$ are the principal component factors and $\vec{B}$ contains factor loadings.
+
+\paragraph{Portfolio Optimization:}
+The reduced-dimension representation enables efficient portfolio optimization:
+\begin{equation}
+    \minimize_{\vec{w}} \quad \vec{w}^T\vec{\Sigma}\vec{w} \quad \subject \quad \vec{w}^T\vec{\mu} \geq r_{\min}, \quad \vec{w}^T\vec{1} = 1
+\end{equation}
+where $\vec{\Sigma}$ is approximated using the first $k$ principal components.
+
+\subsection{Bioinformatics and Genomics}
+
+\paragraph{Gene Expression Analysis:}
+PCA reveals patterns in high-dimensional gene expression data:
+\begin{itemize}[noitemsep]
+    \item \textbf{Dimensionality}: Typically $d \sim 10^4$ genes, $n \sim 10^2$ samples
+    \item \textbf{Interpretation}: Principal components often correspond to biological pathways
+    \item \textbf{Visualization}: First 2-3 components enable 2D/3D visualization of sample relationships
+\end{itemize}
+
+\paragraph{Population Genetics:}
+PCA of genetic variation data reveals population structure and migration patterns, with principal components correlating with geographical distances.
+
+\newpage
+
+\end{document}
