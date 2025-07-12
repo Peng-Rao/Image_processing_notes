@@ -533,6 +533,275 @@ directly seeks the sparsest representation.
 === Computational Challenges
 The $ell_0$ minimization problem is NP-hard in general, making it computationally intractable for large-scale problems. This has led to the development of convex relaxations and approximation algorithms.
 
+#pagebreak()
+
+= Sparse Coding in $ell_0$ sense
+== The $ell_0$ Norm
+The $ell_0$ norm (more precisely, $ell_0$ pseudo-norm) of a vector $bold(x) in RR^n$ is defined as:
+$
+  norm(bold(x))_0 := |{i : x_i != 0}| = sum_{i=1}^n bold(1)_{x_i != 0}
+$
+where $bold(1)_{x_i != 0}$ is the indicator function that equals 1 if $x_i != 0$ and 0 otherwise.
+
+The $ell_0$ norm can be understood as the limit of $ell_p$ norms as $p -> 0^+$:
+$
+  norm(bold(x))_0 = lim_{p -> 0^+} norm(bold(x))_p^p = lim_{p -> 0^+} (sum_{i=1}^n |x_i|^p)
+$
+
+
+The $ell_0$ norm satisfies the following properties:
++ *Non-negativity*: $norm(bold(x))_0 >= 0$ for all $bold(x) in RR^n$
++ *Zero property*: $norm(bold(x))_0 = 0$ if and only if $bold(x) = bold(0)$
++ *Triangle inequality*: $norm(bold(x) + bold(y))_0 <= norm(bold(x))_0 + norm(bold(y))_0$
++ *Failure of homogeneity*: $norm(lambda bold(x))_0 != |lambda| norm(bold(x))_0$ for $lambda != 0, plus.minus 1$
+
+
+Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
+- $norm(bold(alpha))_0 = 0$: Only the origin $(0, 0, 0)$
+- $norm(bold(alpha))_0 = 1$: Points on coordinate axes, e.g., $(7, 0, 0)$, $(0, 3, 0)$
+- $norm(bold(alpha))_0 = 2$: Points lying in coordinate planes, e.g., $(5, 2, 0)$
+- $norm(bold(alpha))_0 = 3$: All other points in $RR^3$
+
+
+
+== The Sparse Coding Problem
+Given the desire for sparse representations, a natural formulation is to seek the sparsest possible $bold(alpha)$ such that:
+$
+  bold(x) = D bold(alpha)
+$
+This leads to the following optimization problem.
+$
+  min_(bold(alpha) in RR^n) norm(bold(alpha))_0 quad "subject to" quad bold(x) = D bold(alpha)
+$ <eq:p0_problem>
+This is often referred to as the *$P_0$ problem*.
+
+#align(center)[
+  #box(fill: gray.lighten(90%), stroke: 1pt + black, inset: 10pt, width: 85%, [
+    *Goal:* Among all solutions $bold(alpha)$ such that $D bold(alpha) = bold(x)$, select the sparsest one.
+  ])
+]
+
+*Challenge:* The $ell_0$ norm is non-convex, discontinuous, and leads to combinatorial complexity. Solving @eq:p0_problem exactly is NP-hard in general.
+
+=== Union of Subspaces Interpretation
+
+Let us assume $D in RR^(m times n)$ is a dictionary with $n > m$, i.e., an overcomplete dictionary.
+
+Suppose we restrict $bold(alpha)$ to have at most $s$ non-zero entries. Then the image $D bold(alpha)$ lies in a subspace spanned by $s$ columns of $D$.
+
+#definition("Sparsity-Induced Subspace")[
+  If $bold(alpha)$ has $norm(bold(alpha))_0 <= s$, then $bold(x) = D bold(alpha)$ lies in a subspace $S_omega := "span"(D_omega)$, where $omega$ is the support of $bold(alpha)$ and $D_omega$ denotes the sub-matrix of $D$ restricted to columns indexed by $omega$.
+]
+
+Therefore, the space of all $s$-sparse representations is the union of all such $s$-dimensional subspaces:
+$
+  cal(M)_s := union.big_(omega subset {1, dots, n}, |omega| <= s) "span"(D_omega)
+$
+
+#align(center)[
+  #box(
+    fill: gray.lighten(90%),
+    stroke: 1pt + black,
+    inset: 10pt,
+    width: 85%,
+    [
+      *Interpretation:* Sparse modeling corresponds to finding the best subspace (among exponentially many) in which to approximate the signal $bold(x)$.
+    ],
+  )
+]
+
+*Key Point:* Unlike PCA (which projects onto a single global subspace), sparse coding projects onto a _union of low-dimensional subspaces_, selected adaptively based on the input $bold(x)$.
+
+=== A 2D Illustration of Sparsity
+
+Suppose we are working in $RR^2$ and $D$ has 3 atoms:
+$
+  D = mat(bold(d)_1, bold(d)_2, bold(d)_3), quad D in RR^(2 times 3)
+$
+Each $bold(d)_i$ is a column vector in $RR^2$.
+
+Let $bold(x) in RR^2$ be a signal we wish to approximate. If we restrict $norm(bold(alpha))_0 = 1$, then the approximant $D bold(alpha)$ must lie along one of the directions $bold(d)_1$, $bold(d)_2$, or $bold(d)_3$.
+
+#figure(
+  canvas({
+    import draw: *
+
+    set-style(
+      stroke: (thickness: 1pt, cap: "round"),
+      mark: (fill: black, scale: 1.2),
+    )
+
+    // Draw the three dictionary atoms
+    line((0, 0), (3, 0), mark: (end: "stealth"))
+    content((3.2, 0), [$bold(d)_1$], anchor: "west")
+
+    line((0, 0), (2.1, 2.1), mark: (end: "stealth"))
+    content((2.3, 2.3), [$bold(d)_2$], anchor: "south-west")
+
+    line((0, 0), (0, 3), mark: (end: "stealth"))
+    content((0, 3.2), [$bold(d)_3$], anchor: "south")
+
+    // Draw the signal vector
+    set-style(stroke: (paint: blue, thickness: 2pt))
+    line((0, 0), (1.8, 1.35), mark: (end: "stealth"))
+    content((2, 1.5), text(fill: blue, [$bold(x)$]), anchor: "west")
+  }),
+  caption: [Approximation of $bold(x)$ via projections onto sparse atoms],
+)
+
+*Interpretation:*
+- We seek the atom $bold(d)_i$ such that the projection of $bold(x)$ onto $"span"(bold(d)_i)$ minimizes the residual.
+- This is the best 1-sparse approximation.
+
+*In general:*
+If $norm(bold(alpha))_0 <= s$, the approximation lives in a union of $binom(n, s)$ subspaces.
+
+=== Combinatorial Intractability
+
+*Why is $P_0$ hard?* To find the optimal $s$-sparse representation of $bold(x)$, one must:
++ Enumerate all subsets $omega subset {1, dots, n}$ of size $s$
++ Solve the least squares problem:
+  $
+    bold(alpha)_omega = arg min_(bold(z) in RR^s) norm(D_omega bold(z) - bold(x))_2^2
+  $
++ Select the best $omega$ minimizing the residual.
+
+The number of subsets grows exponentially:
+$
+  "#subspaces" = binom(n, s) tilde (n e / s)^s
+$
+
+*Illustrative Example:*
+Let $n = 1000$, $s = 20$. Then:
+$
+  binom(1000, 20) approx 10^34
+$
+Assuming a billion operations per second, exhaustive search would take more time than the age of the universe.
+
+#align(center)[
+  #box(
+    fill: gray.lighten(90%),
+    stroke: 1pt + black,
+    inset: 10pt,
+    width: 85%,
+    [
+      *Conclusion:* The $ell_0$ sparse coding problem is combinatorially explosive. Efficient approximations are necessary.
+    ],
+  )
+]
+
+== Greedy Algorithms for Sparse Coding
+Given the computational intractability of exact $ell_0$ minimization, we turn to greedy approximation algorithms that provide computationally feasible solutions.
+
+=== The Greedy Paradigm
+A *greedy algorithm* for sparse coding makes locally optimal choices at each iteration without reconsidering previous decisions, building up the solution incrementally by adding one dictionary atom at a time.
+
+#example("Coin Change Analogy")[
+  The greedy approach mirrors the coin change problem:
+  - *Goal*: Minimize the number of coins to make change
+  - *Greedy strategy*: Always use the largest denomination possible
+  - *Limitation*: Optimal only for specially designed coin systems
+
+  For standard currency systems (e.g., {1, 2, 5, 10, 20, 50}), greedy gives optimal solutions. However, for pathological systems (e.g., {1, 3, 4}), greedy fails: making change for 6 units gives greedy solution 4+1+1 (3 coins) vs. optimal 3+3 (2 coins).
+] <ex:coin_change>
+
+#pagebreak()
+
+=== Matching Pursuit Algorithm
+The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse coding:
+*Input:* Signal $bold(y)$, dictionary $bold(D)$, stopping criterion \
+*Output:* Sparse representation $bold(x)$
+
++ *Initialize:*
+  $
+    bold(x)^((0)) & = bold(0) quad  & "(coefficient vector)" \
+    bold(r)^((0)) & = bold(y) quad  &           "(residual)" \
+      Omega^((0)) & = emptyset quad &         "(active set)" \
+                k & = 0 quad        &  "(iteration counter)"
+  $
+
++ *Sweep Stage:* For each atom $j = 1, dots, n$, compute the approximation error:
+  $
+    E_j^((k)) = norm(bold(r)^((k)) - angle.l bold(d)_j \, bold(r)^(k) angle.r bold(d)_j)_2^2
+  $ <eq:mp_error>
+
++ *Atom Selection:* Choose the atom with minimum error:
+  $
+    j^* = arg min_(j=1,dots,n) E_j^((k))
+  $ <eq:mp_selection>
+
+  Equivalently (by maximizing correlation):
+  $
+    j^* = arg max_(j=1,dots,n) (|(bold(r)^((k)))^T bold(d)_j|^2)/(norm(bold(d)_j)_2^2)
+  $ <eq:mp_correlation>
+
++ *Coefficient Update:* Compute the projection coefficient:
+  $
+    z_(j^*)^((k)) = (bold(r)^((k)))^T bold(d)_(j^*) / norm(bold(d)_(j^*))_2^2
+  $ <eq:mp_coefficient>
+
++ *Solution Update:*
+  $
+    bold(x)^((k+1)) = bold(x)^((k)) + z_(j^*)^((k)) bold(e)_(j^*)
+  $ <eq:mp_solution_update>
+  where $bold(e)_(j^*)$ is the $j^*$-th standard basis vector.
+
++ *Residual Update:*
+  $
+    bold(r)^((k+1)) = bold(r)^((k)) - z_(j^*)^((k)) bold(d)_(j^*)
+  $ <eq:mp_residual_update>
+
++ *Active Set Update:*
+  $
+    Omega^((k+1)) = Omega^((k)) union {j^*}
+  $
+
++ *Stopping Criteria:* Terminate if:
+  - $|Omega^((k+1))| >= k_"max"$ (maximum sparsity reached)
+  - $norm(bold(r)^((k+1)))_2 <= epsilon$ (residual threshold met)
+
+  Otherwise, set $k arrow.l k+1$ and return to step 2.
+
+#pagebreak()
+
+== Properties of Matching Pursuit
+=== Residual Monotonicity
+The Matching Pursuit algorithm produces a monotonically decreasing sequence of residual norms:
+$
+  norm(bold(r)^((k+1)))_2 <= norm(bold(r)^((k)))_2
+$
+with strict inequality unless $bold(r)^((k))$ is orthogonal to all dictionary atoms.
+
+=== Atom Reselection
+Unlike orthogonal methods, Matching Pursuit may select the same atom multiple times in successive iterations. This occurs because:
++ The algorithm does not enforce orthogonality of residuals to previously selected atoms
++ Residual components may align with previously selected atoms after updates
++ This can lead to slower convergence compared to orthogonal variants
+
+=== Convergence Analysis
+For any finite dictionary $bold(D)$ and signal $bold(y)$, the Matching Pursuit algorithm converges in the sense that:
+$
+  lim_(k -> oo) norm(bold(r)^((k)))_2 = min_(bold(x)) norm(bold(y) - bold(D) bold(x))_2
+$
+Furthermore, if $bold(y) in "span"(bold(D))$, then the algorithm achieves exact recovery in finite steps.
+
+=== Approximation Quality
+While Matching Pursuit provides computational tractability, it may not achieve the globally optimal sparse solution. The quality of approximation depends on the coherence structure of the dictionary.
+
+The *coherence* of a dictionary $bold(D)$ with normalized columns is:
+$
+  mu(bold(D)) = max_(i != j) |bold(d)_i^T bold(d)_j|
+$
+Under certain conditions on dictionary coherence and signal sparsity, Matching Pursuit provides approximation guarantees. Specifically, if the true sparse representation has sparsity $k$ and the dictionary satisfies appropriate coherence conditions, then MP recovers a solution with controlled approximation error.
+
+=== Computational Complexity
+Each iteration of Matching Pursuit requires:
+- $cal(O)(m n)$ operations for the sweep stage (computing all correlations)
+- $cal(O)(m)$ operations for residual update
+- Total per-iteration complexity: $cal(O)(m n)$
+
+For $k$ iterations, the total complexity is $cal(O)(k m n)$, which is polynomial and practically feasible.
+
 
 #pagebreak()
 

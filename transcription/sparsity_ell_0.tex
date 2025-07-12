@@ -1,0 +1,727 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{framed}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Mathematical notation
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\argmin}{argmin}
+\DeclareMathOperator{\argmax}{argmax}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\spn}{span}
+\DeclareMathOperator{\card}{card}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+% Special boxes
+\newenvironment{importantbox}
+{\begin{framed}\noindent\textbf{Important:}\quad}
+{\end{framed}}
+
+\title{Sparsity-Promoting Algorithms and $\ell_0$ Optimization: \\
+A Comprehensive Treatment of Sparse Coding Theory}
+\author{Lecture Notes on Signal Processing and Sparse Representation}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% NOTE: This section provides foundational context for the mathematical framework
+\section{Introduction to Sparsity and Redundant Representations}
+
+In the realm of signal processing and machine learning, the concept of \textit{sparsity} has emerged as a fundamental principle for achieving efficient and meaningful representations of data. This lecture explores the mathematical foundations of sparsity-promoting algorithms, with particular emphasis on the $\ell_0$ norm optimization problem and its computational challenges.
+
+\subsection{Motivation: From Orthonormal Bases to Redundant Dictionaries}
+
+Traditional signal processing relies heavily on orthonormal bases for signal representation. However, as demonstrated in previous lectures, natural signals often exhibit sparse structure with respect to overcomplete dictionaries rather than standard orthonormal bases.
+
+\begin{definition}[Redundant Dictionary]\label{def:redundant_dict}
+    A \textbf{redundant dictionary} $\mathbf{D} \in \mathbb{R}^{m \times n}$ with $n > m$ is a matrix whose columns $\{\mathbf{d}_1, \mathbf{d}_2, \ldots, \mathbf{d}_n\}$ span the ambient space $\mathbb{R}^m$ but are linearly dependent due to the overcompleteness constraint $n > m$.
+\end{definition}
+
+The fundamental representation problem can be formulated as:
+\begin{equation}\label{eq:basic_representation}
+    \mathbf{y} = \mathbf{D}\mathbf{x}
+\end{equation}
+where:
+\begin{itemize}
+    \item $\mathbf{y} \in \mathbb{R}^m$ is the observed signal in the ambient space
+    \item $\mathbf{D} \in \mathbb{R}^{m \times n}$ is the redundant dictionary with $n > m$
+    \item $\mathbf{x} \in \mathbb{R}^n$ is the sparse coefficient vector we seek to determine
+\end{itemize}
+
+\begin{importantbox}
+    The key insight is that while traditional orthonormal representations provide unique decompositions, redundant dictionaries offer flexibility at the cost of uniqueness, necessitating additional constraints (such as sparsity) to select meaningful solutions.
+\end{importantbox}
+
+\newpage
+
+% NOTE: This section develops the mathematical properties of the $\ell_0$ norm
+\subsection{The $\ell_0$ Norm: Definition and Properties}
+
+\begin{definition}[$\ell_0$ Norm]\label{def:l0_norm}
+    The $\ell_0$ norm (more precisely, $\ell_0$ pseudo-norm) of a vector $\mathbf{x} \in \mathbb{R}^n$ is defined as:
+    \begin{equation}\label{eq:l0_definition}
+        \|\mathbf{x}\|_0 := \card\{i : x_i \neq 0\} = \sum_{i=1}^n \mathbf{1}_{x_i \neq 0}
+    \end{equation}
+    where $\mathbf{1}_{x_i \neq 0}$ is the indicator function that equals 1 if $x_i \neq 0$ and 0 otherwise.
+\end{definition}
+
+The $\ell_0$ norm can be understood as the limit of $\ell_p$ norms as $p \to 0^+$:
+\begin{equation}\label{eq:l0_limit}
+    \|\mathbf{x}\|_0 = \lim_{p \to 0^+} \|\mathbf{x}\|_p^p = \lim_{p \to 0^+} \left(\sum_{i=1}^n |x_i|^p\right)
+\end{equation}
+
+\begin{proposition}[Properties of the $\ell_0$ Norm]\label{prop:l0_properties}
+    The $\ell_0$ norm satisfies the following properties:
+    \begin{enumerate}
+        \item \textbf{Non-negativity}: $\|\mathbf{x}\|_0 \geq 0$ for all $\mathbf{x} \in \mathbb{R}^n$
+        \item \textbf{Zero property}: $\|\mathbf{x}\|_0 = 0$ if and only if $\mathbf{x} = \mathbf{0}$
+        \item \textbf{Triangle inequality}: $\|\mathbf{x} + \mathbf{y}\|_0 \leq \|\mathbf{x}\|_0 + \|\mathbf{y}\|_0$
+        \item \textbf{Failure of homogeneity}: $\|\lambda\mathbf{x}\|_0 \neq |\lambda|\|\mathbf{x}\|_0$ for $\lambda \neq 0, \pm 1$
+    \end{enumerate}
+\end{proposition}
+
+\begin{proof}[Proof Sketch]
+    Properties 1-3 follow directly from the definition as a cardinality function. Property 4 demonstrates why $\|\cdot\|_0$ is not a true norm: for any $\mathbf{x} \neq \mathbf{0}$ and $\lambda \neq 0$, we have $\|\lambda\mathbf{x}\|_0 = \|\mathbf{x}\|_0$ regardless of $|\lambda|$, violating the homogeneity requirement of a norm.
+\end{proof}
+
+\subsection{Geometric Interpretation of Sparsity Constraints}
+
+The geometric structure imposed by $\ell_0$ constraints fundamentally differs from traditional linear subspace projections.
+
+\begin{example}[Sparsity Sets in Low Dimensions]\label{ex:sparsity_geometry}
+    In $\mathbb{R}^3$, the sets of vectors with different sparsity levels form:
+    \begin{align}
+        S_0 & = \{\mathbf{x} : \|\mathbf{x}\|_0 = 0\} = \{\mathbf{0}\} \quad \text{(origin only)}      \\
+        S_1 & = \{\mathbf{x} : \|\mathbf{x}\|_0 = 1\} = \text{coordinate axes}                         \\
+        S_2 & = \{\mathbf{x} : \|\mathbf{x}\|_0 = 2\} = \text{coordinate planes}                       \\
+        S_3 & = \{\mathbf{x} : \|\mathbf{x}\|_0 = 3\} = \mathbb{R}^3 \setminus (S_0 \cup S_1 \cup S_2)
+    \end{align}
+\end{example}
+
+This geometric perspective reveals that sparsity constraints define a \textit{union of linear subspaces} rather than a single linear subspace, fundamentally altering the optimization landscape.
+
+\newpage
+
+% NOTE: This section establishes the formal optimization problem and its challenges
+\section{The Sparse Coding Problem: Formulation and Complexity}
+
+\subsection{Problem Formulation}
+
+The central problem in sparse coding can be formally stated as:
+
+\begin{equation}\label{eq:sparse_coding_main}
+    \boxed{
+        \begin{aligned}
+            \mathbf{x}^* = \argmin_{\mathbf{x}} \quad & \|\mathbf{x}\|_0                  \\
+            \text{subject to} \quad                   & \mathbf{D}\mathbf{x} = \mathbf{y}
+        \end{aligned}
+    }
+\end{equation}
+
+This is known as the \textbf{$P_0$ problem} in the sparse coding literature.
+
+\begin{remark}[Relationship to Previous Methods]
+    This formulation extends our previous approach of selecting the largest coefficients in orthonormal decompositions to the overcomplete dictionary setting, where the representation itself must be determined simultaneously with the sparsity constraint.
+\end{remark}
+
+\subsection{Geometric Interpretation: Union of Subspaces}
+
+The sparsity constraint fundamentally changes the geometric structure of admissible solutions. Instead of seeking projections onto a single linear subspace (as in Principal Component Analysis), we consider projections onto a \textit{union of low-dimensional subspaces}.
+
+\begin{definition}[Sparsity-Constrained Subspaces]\label{def:sparse_subspaces}
+    For a given sparsity level $k$, the set of $k$-sparse vectors representable by dictionary $\mathbf{D}$ is:
+    \begin{equation}
+        \mathcal{S}_k(\mathbf{D}) = \left\{\mathbf{D}\mathbf{x} : \mathbf{x} \in \mathbb{R}^n, \|\mathbf{x}\|_0 \leq k\right\}
+    \end{equation}
+    This set forms a union of $\binom{n}{k}$ distinct $k$-dimensional subspaces.
+\end{definition}
+
+\begin{example}[Two-Dimensional Illustration]\label{ex:2d_sparse_subspaces}
+    Consider $\mathbf{D} \in \mathbb{R}^{2 \times 4}$ with columns $\{\mathbf{d}_1, \mathbf{d}_2, \mathbf{d}_3, \mathbf{d}_4\}$. The 1-sparse representable vectors form the union:
+    \begin{equation}
+        \mathcal{S}_1(\mathbf{D}) = \spn\{\mathbf{d}_1\} \cup \spn\{\mathbf{d}_2\} \cup \spn\{\mathbf{d}_3\} \cup \spn\{\mathbf{d}_4\}
+    \end{equation}
+    This creates four distinct lines through the origin, and any signal $\mathbf{y}$ would be projected onto the closest of these four lines.
+\end{example}
+
+\subsection{Computational Complexity Analysis}
+
+\begin{theorem}[NP-Hardness of $\ell_0$ Minimization]\label{thm:np_hardness}
+    The sparse coding problem \eqref{eq:sparse_coding_main} is NP-hard in general.
+\end{theorem}
+
+\begin{proof}[Proof Outline]
+    The proof follows by reduction from the NP-complete subset selection problem. For any desired sparsity level $k$, one must potentially examine all $\binom{n}{k}$ possible support sets, leading to combinatorial explosion.
+\end{proof}
+
+\paragraph{Brute Force Complexity Analysis}
+
+A brute force approach would involve:
+\begin{enumerate}
+    \item Testing all possible sparsity levels $s = 1, 2, \ldots, k$
+    \item For each sparsity level $s$, examining all $\binom{n}{s}$ possible support sets
+    \item Solving a least-squares problem for each support set
+\end{enumerate}
+
+The total computational complexity becomes:
+\begin{equation}\label{eq:brute_force_complexity}
+    \mathcal{O}\left(\sum_{s=1}^k \binom{n}{s} \cdot s^3\right) \approx \mathcal{O}\left(\binom{n}{k} \cdot k^3\right)
+\end{equation}
+
+\begin{example}[Computational Intractability]\label{ex:computational_example}
+    Consider a realistic scenario with:
+    \begin{itemize}
+        \item Signal dimension: $m = 500$ (e.g., a $22 \times 22$ image patch)
+        \item Dictionary size: $n = 1000$ (4× overcomplete)
+        \item Target sparsity: $k = 20$ (4\% sparse)
+        \item Linear system solution time: $10^{-9}$ seconds per system
+    \end{itemize}
+
+    The number of combinations to test is:
+    \begin{equation}
+        \binom{1000}{20} \approx 10^{51}
+    \end{equation}
+
+    Even with supercomputer capabilities, this would require approximately $10^{31}$ years—far exceeding the age of the universe.
+\end{example}
+
+\newpage
+
+% NOTE: This section introduces the fundamental greedy approach to sparse coding
+\section{Greedy Algorithms: The Matching Pursuit Framework}
+
+Given the computational intractability of exact $\ell_0$ minimization, we turn to greedy approximation algorithms that provide computationally feasible solutions.
+
+\subsection{The Greedy Paradigm}
+
+\begin{definition}[Greedy Algorithm Principle]\label{def:greedy_principle}
+    A \textbf{greedy algorithm} for sparse coding makes locally optimal choices at each iteration without reconsidering previous decisions, building up the solution incrementally by adding one dictionary atom at a time.
+\end{definition}
+
+\begin{example}[Coin Change Analogy]\label{ex:coin_change}
+    The greedy approach mirrors the coin change problem:
+    \begin{itemize}
+        \item \textbf{Goal}: Minimize the number of coins to make change
+        \item \textbf{Greedy strategy}: Always use the largest denomination possible
+        \item \textbf{Limitation}: Optimal only for specially designed coin systems
+    \end{itemize}
+
+    For standard currency systems (e.g., \{1, 2, 5, 10, 20, 50\}), greedy gives optimal solutions. However, for pathological systems (e.g., \{1, 3, 4\}), greedy fails: making change for 6 units gives greedy solution 4+1+1 (3 coins) vs. optimal 3+3 (2 coins).
+\end{example}
+
+\subsection{Matching Pursuit Algorithm}
+
+The \textbf{Matching Pursuit (MP)} algorithm embodies the greedy principle for sparse coding:
+
+\begin{algorithm}\label{alg:matching_pursuit}
+    \textbf{Input:} Signal $\mathbf{y}$, dictionary $\mathbf{D}$, stopping criterion\\
+    \textbf{Output:} Sparse representation $\mathbf{x}$
+
+    \begin{enumerate}
+        \item \textbf{Initialize:}
+              \begin{align}
+                  \mathbf{x}^{(0)} & = \mathbf{0} \quad \text{(coefficient vector)} \\
+                  \mathbf{r}^{(0)} & = \mathbf{y} \quad \text{(residual)}           \\
+                  \Omega^{(0)}     & = \emptyset \quad \text{(active set)}          \\
+                  k                & = 0 \quad \text{(iteration counter)}
+              \end{align}
+
+        \item \textbf{Sweep Stage:} For each atom $j = 1, \ldots, n$, compute the approximation error:
+              \begin{equation}\label{eq:mp_error}
+                  E_j^{(k)} = \left\|\mathbf{r}^{(k)} - \frac{(\mathbf{r}^{(k)})^T \mathbf{d}_j}{\|\mathbf{d}_j\|_2^2} \mathbf{d}_j\right\|_2^2
+              \end{equation}
+
+        \item \textbf{Atom Selection:} Choose the atom with minimum error:
+              \begin{equation}\label{eq:mp_selection}
+                  j^* = \argmin_{j=1,\ldots,n} E_j^{(k)}
+              \end{equation}
+
+              Equivalently (by maximizing correlation):
+              \begin{equation}\label{eq:mp_correlation}
+                  j^* = \argmax_{j=1,\ldots,n} \frac{|(\mathbf{r}^{(k)})^T \mathbf{d}_j|^2}{\|\mathbf{d}_j\|_2^2}
+              \end{equation}
+
+        \item \textbf{Coefficient Update:} Compute the projection coefficient:
+              \begin{equation}\label{eq:mp_coefficient}
+                  z_{j^*}^{(k)} = \frac{(\mathbf{r}^{(k)})^T \mathbf{d}_{j^*}}{\|\mathbf{d}_{j^*}\|_2^2}
+              \end{equation}
+
+        \item \textbf{Solution Update:}
+              \begin{equation}\label{eq:mp_solution_update}
+                  \mathbf{x}^{(k+1)} = \mathbf{x}^{(k)} + z_{j^*}^{(k)} \mathbf{e}_{j^*}
+              \end{equation}
+              where $\mathbf{e}_{j^*}$ is the $j^*$-th standard basis vector.
+
+        \item \textbf{Residual Update:}
+              \begin{equation}\label{eq:mp_residual_update}
+                  \mathbf{r}^{(k+1)} = \mathbf{r}^{(k)} - z_{j^*}^{(k)} \mathbf{d}_{j^*}
+              \end{equation}
+
+        \item \textbf{Active Set Update:}
+              \begin{equation}
+                  \Omega^{(k+1)} = \Omega^{(k)} \cup \{j^*\}
+              \end{equation}
+
+        \item \textbf{Stopping Criteria:} Terminate if:
+              \begin{itemize}
+                  \item $|\Omega^{(k+1)}| \geq k_{\max}$ (maximum sparsity reached)
+                  \item $\|\mathbf{r}^{(k+1)}\|_2 \leq \epsilon$ (residual threshold met)
+              \end{itemize}
+              Otherwise, set $k \leftarrow k+1$ and return to step 2.
+    \end{enumerate}
+\end{algorithm}
+
+\newpage
+
+% NOTE: This section provides detailed mathematical derivations for the algorithm
+\subsection{Mathematical Derivation of Key Formulas}
+
+\subsubsection{Projection Formula Derivation}
+
+The projection of residual $\mathbf{r}^{(k)}$ onto atom $\mathbf{d}_j$ is obtained by solving:
+\begin{equation}\label{eq:projection_problem}
+    \min_{z_j} \left\|\mathbf{r}^{(k)} - z_j \mathbf{d}_j\right\|_2^2
+\end{equation}
+
+\begin{align}
+    \frac{d}{dz_j} \left\|\mathbf{r}^{(k)} - z_j \mathbf{d}_j\right\|_2^2 & = \frac{d}{dz_j} \left[(\mathbf{r}^{(k)})^T \mathbf{r}^{(k)} - 2z_j (\mathbf{r}^{(k)})^T \mathbf{d}_j + z_j^2 \mathbf{d}_j^T \mathbf{d}_j\right] \\
+                                                                          & = -2(\mathbf{r}^{(k)})^T \mathbf{d}_j + 2z_j \|\mathbf{d}_j\|_2^2
+\end{align}
+
+Setting the derivative to zero:
+\begin{equation}
+    z_j^* = \frac{(\mathbf{r}^{(k)})^T \mathbf{d}_j}{\|\mathbf{d}_j\|_2^2}
+\end{equation}
+
+This confirms equation \eqref{eq:mp_coefficient}.
+
+\subsubsection{Error Formula Derivation}
+
+The approximation error becomes:
+\begin{align}
+    E_j^{(k)} & = \left\|\mathbf{r}^{(k)} - z_j^* \mathbf{d}_j\right\|_2^2                                                          \\
+              & = (\mathbf{r}^{(k)})^T \mathbf{r}^{(k)} - 2z_j^* (\mathbf{r}^{(k)})^T \mathbf{d}_j + (z_j^*)^2 \|\mathbf{d}_j\|_2^2
+\end{align}
+
+Substituting the optimal $z_j^*$:
+\begin{align}
+    E_j^{(k)} & = \|\mathbf{r}^{(k)}\|_2^2 - 2 \frac{((\mathbf{r}^{(k)})^T \mathbf{d}_j)^2}{\|\mathbf{d}_j\|_2^2} + \frac{((\mathbf{r}^{(k)})^T \mathbf{d}_j)^2}{\|\mathbf{d}_j\|_2^2} \\
+              & = \|\mathbf{r}^{(k)}\|_2^2 - \frac{((\mathbf{r}^{(k)})^T \mathbf{d}_j)^2}{\|\mathbf{d}_j\|_2^2}
+\end{align}
+
+\begin{proposition}[Error Positivity]\label{prop:error_positivity}
+    The approximation error $E_j^{(k)}$ is always non-negative, with equality if and only if $\mathbf{r}^{(k)}$ is parallel to $\mathbf{d}_j$.
+\end{proposition}
+
+\begin{proof}
+    By the Cauchy-Schwarz inequality:
+    \begin{equation}
+        ((\mathbf{r}^{(k)})^T \mathbf{d}_j)^2 \leq \|\mathbf{r}^{(k)}\|_2^2 \|\mathbf{d}_j\|_2^2
+    \end{equation}
+    Therefore:
+    \begin{equation}
+        \frac{((\mathbf{r}^{(k)})^T \mathbf{d}_j)^2}{\|\mathbf{d}_j\|_2^2} \leq \|\mathbf{r}^{(k)}\|_2^2
+    \end{equation}
+    Equality holds if and only if $\mathbf{r}^{(k)}$ and $\mathbf{d}_j$ are linearly dependent.
+\end{proof}
+
+\subsection{Algorithm Properties and Limitations}
+
+\begin{proposition}[Residual Monotonicity]\label{prop:residual_monotonicity}
+    The Matching Pursuit algorithm produces a monotonically decreasing sequence of residual norms:
+    \begin{equation}
+        \|\mathbf{r}^{(k+1)}\|_2 \leq \|\mathbf{r}^{(k)}\|_2
+    \end{equation}
+    with strict inequality unless $\mathbf{r}^{(k)}$ is orthogonal to all dictionary atoms.
+\end{proposition}
+
+\begin{remark}[Atom Reselection]
+    Unlike orthogonal methods, Matching Pursuit may select the same atom multiple times in successive iterations. This occurs because:
+    \begin{enumerate}
+        \item The algorithm does not enforce orthogonality of residuals to previously selected atoms
+        \item Residual components may align with previously selected atoms after updates
+        \item This can lead to slower convergence compared to orthogonal variants
+    \end{enumerate}
+\end{remark}
+
+\newpage
+
+% NOTE: This section covers theoretical guarantees and convergence analysis
+\section{Theoretical Analysis and Performance Guarantees}
+
+\subsection{Convergence Analysis}
+
+\begin{theorem}[Convergence of Matching Pursuit]\label{thm:mp_convergence}
+    For any finite dictionary $\mathbf{D}$ and signal $\mathbf{y}$, the Matching Pursuit algorithm converges in the sense that:
+    \begin{equation}
+        \lim_{k \to \infty} \|\mathbf{r}^{(k)}\|_2 = \min_{\mathbf{x}} \|\mathbf{y} - \mathbf{D}\mathbf{x}\|_2
+    \end{equation}
+    Furthermore, if $\mathbf{y} \in \text{span}(\mathbf{D})$, then the algorithm achieves exact recovery in finite steps.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+    The proof relies on the fact that the residual energy decreases monotonically and is bounded below by zero. The key insight is that if the algorithm fails to converge to the optimal approximation, there must exist some atom that maintains significant correlation with the residual, contradicting the optimality of atom selection.
+\end{proof}
+
+\subsection{Approximation Quality}
+
+While Matching Pursuit provides computational tractability, it may not achieve the globally optimal sparse solution. The quality of approximation depends on the coherence structure of the dictionary.
+
+\begin{definition}[Dictionary Coherence]\label{def:coherence}
+    The \textbf{coherence} of a dictionary $\mathbf{D}$ with normalized columns is:
+    \begin{equation}
+        \mu(\mathbf{D}) = \max_{i \neq j} |\mathbf{d}_i^T \mathbf{d}_j|
+    \end{equation}
+\end{definition}
+
+\begin{theorem}[Approximation Bound]\label{thm:approximation_bound}
+    Under certain conditions on dictionary coherence and signal sparsity, Matching Pursuit provides approximation guarantees. Specifically, if the true sparse representation has sparsity $k$ and the dictionary satisfies appropriate coherence conditions, then MP recovers a solution with controlled approximation error.
+\end{theorem}
+
+\subsection{Computational Complexity}
+
+\begin{proposition}[MP Computational Complexity]\label{prop:mp_complexity}
+    Each iteration of Matching Pursuit requires:
+    \begin{itemize}
+        \item $\mathcal{O}(mn)$ operations for the sweep stage (computing all correlations)
+        \item $\mathcal{O}(m)$ operations for residual update
+        \item Total per-iteration complexity: $\mathcal{O}(mn)$
+    \end{itemize}
+
+    For $k$ iterations, the total complexity is $\mathcal{O}(kmn)$, which is polynomial and practically feasible.
+\end{proposition}
+
+\subsection{Comparison with Optimal Solutions}
+
+\begin{example}[Suboptimality Illustration]\label{ex:suboptimality}
+    Consider a simple 2D case where the true 1-sparse representation uses atom $\mathbf{d}_3$, but the signal has small noise components that align better with $\mathbf{d}_1$. Matching Pursuit might select $\mathbf{d}_1$ first, then require additional atoms to approximate the remaining signal components, resulting in a less sparse solution than optimal.
+\end{example}
+
+This limitation motivates the development of orthogonal variants and more sophisticated algorithms that will be covered in subsequent lectures.
+
+\newpage
+
+% NOTE: This section provides comprehensive examples and applications
+\section{Examples, Applications, and Extensions}
+
+\subsection{Detailed Algorithmic Example}
+
+\begin{example}[Complete MP Execution]\label{ex:complete_mp}
+    Consider a 2D signal $\mathbf{y} = [3, 1]^T$ and dictionary:
+    \begin{equation}
+        \mathbf{D} = \begin{bmatrix} 1 & 0 & 0.6 & 0.8 \\ 0 & 1 & 0.8 & 0.6 \end{bmatrix}
+    \end{equation}
+
+    \textbf{Iteration 1:}
+    \begin{itemize}
+        \item Initial residual: $\mathbf{r}^{(0)} = [3, 1]^T$
+        \item Correlations:
+              \begin{align}
+                  (\mathbf{r}^{(0)})^T \mathbf{d}_1 & = 3                     \\
+                  (\mathbf{r}^{(0)})^T \mathbf{d}_2 & = 1                     \\
+                  (\mathbf{r}^{(0)})^T \mathbf{d}_3 & = 3(0.6) + 1(0.8) = 2.6 \\
+                  (\mathbf{r}^{(0)})^T \mathbf{d}_4 & = 3(0.8) + 1(0.6) = 3.0
+              \end{align}
+        \item Normalized correlations (all atoms have unit norm):
+              \begin{align}
+                  \frac{|(\mathbf{r}^{(0)})^T \mathbf{d}_1|^2}{\|\mathbf{d}_1\|_2^2} & = 9    \\
+                  \frac{|(\mathbf{r}^{(0)})^T \mathbf{d}_2|^2}{\|\mathbf{d}_2\|_2^2} & = 1    \\
+                  \frac{|(\mathbf{r}^{(0)})^T \mathbf{d}_3|^2}{\|\mathbf{d}_3\|_2^2} & = 6.76 \\
+                  \frac{|(\mathbf{r}^{(0)})^T \mathbf{d}_4|^2}{\|\mathbf{d}_4\|_2^2} & = 9
+              \end{align}
+        \item Both $\mathbf{d}_1$ and $\mathbf{d}_4$ achieve maximum correlation. Choose $\mathbf{d}_1$ (by convention).
+        \item Update: $x_1^{(1)} = 3$, $\mathbf{r}^{(1)} = [0, 1]^T$
+    \end{itemize}
+
+    \textbf{Iteration 2:}
+    \begin{itemize}
+        \item Current residual: $\mathbf{r}^{(1)} = [0, 1]^T$
+        \item Select $\mathbf{d}_2$ (perfect alignment)
+        \item Update: $x_2^{(1)} = 1$, $\mathbf{r}^{(2)} = [0, 0]^T$
+    \end{itemize}
+
+    Final sparse representation: $\mathbf{x} = [3, 1, 0, 0]^T$ with sparsity 2.
+\end{example}
+
+\subsection{Practical Applications}
+
+\subsubsection{Image Processing}
+
+In image processing, sparse coding with overcomplete dictionaries enables:
+\begin{itemize}
+    \item \textbf{Denoising}: Natural images are often sparse in learned dictionaries, allowing separation of signal from noise
+    \item \textbf{Compression}: Sparse representations require storage of only non-zero coefficients and their locations
+    \item \textbf{Inpainting}: Missing image regions can be reconstructed using sparse priors from remaining data
+    \item \textbf{Super-resolution}: High-resolution details can be recovered using sparse models learned from training data
+\end{itemize}
+
+\subsubsection{Signal Processing Applications}
+
+\begin{itemize}
+    \item \textbf{Audio processing}: Speech and music signals exhibit sparsity in time-frequency dictionaries
+    \item \textbf{Biomedical signals}: ECG, EEG, and other physiological signals benefit from adaptive sparse representations
+    \item \textbf{Radar and communications}: Sparse channel estimation and signal detection in wireless systems
+\end{itemize}
+
+\subsection{Dictionary Learning Perspective}
+
+\begin{remark}[Adaptive Dictionaries]
+    While this lecture focuses on sparse coding with fixed dictionaries, practical applications often involve \textbf{dictionary learning}—the joint optimization of both the dictionary $\mathbf{D}$ and sparse codes $\mathbf{X}$ from training data:
+    \begin{equation}
+        \min_{\mathbf{D}, \mathbf{X}} \|\mathbf{Y} - \mathbf{D}\mathbf{X}\|_F^2 + \lambda \|\mathbf{X}\|_0
+    \end{equation}
+    where $\mathbf{Y}$ contains training signals as columns and $\mathbf{X}$ contains corresponding sparse codes.
+\end{remark}
+
+\subsection{Extensions and Variants}
+
+\subsubsection{Orthogonal Matching Pursuit (OMP)}
+
+A key limitation of standard Matching Pursuit is the potential for atom reselection. \textbf{Orthogonal Matching Pursuit} addresses this by:
+\begin{enumerate}
+    \item Maintaining orthogonality of residuals to previously selected atoms
+    \item Solving least-squares problems over the active set at each iteration
+    \item Guaranteeing that each atom is selected at most once
+\end{enumerate}
+
+\subsubsection{Regularized Variants}
+
+Alternative formulations replace the combinatorial $\ell_0$ constraint with tractable regularizers:
+\begin{itemize}
+    \item \textbf{$\ell_1$ regularization (LASSO)}: $\min_{\mathbf{x}} \|\mathbf{y} - \mathbf{D}\mathbf{x}\|_2^2 + \lambda \|\mathbf{x}\|_1$
+    \item \textbf{Elastic net}: Combines $\ell_1$ and $\ell_2$ penalties
+    \item \textbf{Group sparsity}: Encourages sparsity at the group level
+\end{itemize}
+
+\newpage
+
+% NOTE: This section summarizes key concepts and provides future directions
+\section{Summary and Future Directions}
+
+\subsection{Key Takeaways}
+
+\begin{importantbox}
+    \textbf{Fundamental Insights:}
+    \begin{enumerate}
+        \item Redundant dictionaries provide representational flexibility at the cost of uniqueness
+        \item The $\ell_0$ norm captures sparsity but leads to combinatorially hard optimization problems
+        \item Greedy algorithms like Matching Pursuit provide computationally tractable approximations
+        \item The geometric structure of sparsity involves unions of low-dimensional subspaces rather than single linear subspaces
+    \end{enumerate}
+\end{importantbox}
+
+\subsection{Theoretical Foundations Established}
+
+This lecture has established several crucial theoretical foundations:
+
+\begin{enumerate}
+    \item \textbf{Problem formulation}: The sparse coding problem as $\ell_0$-constrained optimization
+    \item \textbf{Complexity analysis}: NP-hardness of exact solutions and polynomial-time greedy approximations
+    \item \textbf{Algorithmic framework}: The Matching Pursuit paradigm and its mathematical derivation
+    \item \textbf{Geometric insight}: Sparsity as projection onto unions of subspaces
+\end{enumerate}
+
+\subsection{Algorithmic Contributions}
+
+The Matching Pursuit algorithm provides:
+\begin{itemize}
+    \item \textbf{Computational tractability}: $\mathcal{O}(kmn)$ complexity vs. exponential for exact methods
+    \item \textbf{Convergence guarantees}: Monotonic residual decrease and asymptotic optimality
+    \item \textbf{Implementation simplicity}: Clear iterative structure suitable for practical deployment
+    \item \textbf{Theoretical foundation}: Mathematical framework for understanding greedy sparse approximation
+\end{itemize}
+
+\subsection{Limitations and Open Questions}
+
+Several important limitations motivate further research:
+
+\begin{enumerate}
+    \item \textbf{Suboptimality}: Greedy selection may miss globally optimal sparse solutions
+    \item \textbf{Atom reselection}: Standard MP may select atoms multiple times, reducing efficiency
+    \item \textbf{Dictionary dependence}: Performance heavily depends on dictionary structure and coherence
+    \item \textbf{Parameter selection}: Choice of stopping criteria affects solution quality and computational cost
+\end{enumerate}
+
+\subsection{Preview of Advanced Topics}
+
+Future lectures will address these limitations through:
+
+\begin{itemize}
+    \item \textbf{Orthogonal Matching Pursuit}: Eliminating atom reselection through orthogonal projections
+    \item \textbf{Stagewise Orthogonal Matching Pursuit}: Improved atom selection strategies
+    \item \textbf{Convex relaxations}: $\ell_1$ minimization and its theoretical guarantees
+    \item \textbf{Dictionary learning}: Joint optimization of dictionaries and sparse codes
+    \item \textbf{Compressed sensing}: Theoretical foundations for sparse signal recovery
+\end{itemize}
+
+\newpage
+
+% NOTE: This appendix provides additional mathematical details and proofs
+\appendix
+
+\section{Mathematical Appendix}
+
+\subsection{Detailed Proof of Residual Update Formula}
+
+\begin{lemma}[Residual Update Correctness]\label{lem:residual_update}
+    The residual update in Matching Pursuit satisfies:
+    \begin{equation}
+        \mathbf{r}^{(k+1)} = \mathbf{y} - \mathbf{D}\mathbf{x}^{(k+1)}
+    \end{equation}
+    where $\mathbf{x}^{(k+1)}$ is the updated coefficient vector.
+\end{lemma}
+
+\begin{proof}
+    Starting from the coefficient update:
+    \begin{align}
+        \mathbf{x}^{(k+1)} & = \mathbf{x}^{(k)} + z_{j^*}^{(k)} \mathbf{e}_{j^*}
+    \end{align}
+
+    The residual becomes:
+    \begin{align}
+        \mathbf{r}^{(k+1)} & = \mathbf{y} - \mathbf{D}\mathbf{x}^{(k+1)}                                          \\
+                           & = \mathbf{y} - \mathbf{D}(\mathbf{x}^{(k)} + z_{j^*}^{(k)} \mathbf{e}_{j^*})         \\
+                           & = \mathbf{y} - \mathbf{D}\mathbf{x}^{(k)} - z_{j^*}^{(k)} \mathbf{D}\mathbf{e}_{j^*} \\
+                           & = \mathbf{r}^{(k)} - z_{j^*}^{(k)} \mathbf{d}_{j^*}
+    \end{align}
+
+    This confirms the residual update formula \eqref{eq:mp_residual_update}.
+\end{proof}
+
+\subsection{Alternative Derivation Using Lagrangian Methods}
+
+The sparse coding problem can also be approached using constrained optimization theory. Consider the Lagrangian relaxation:
+\begin{equation}
+    L(\mathbf{x}, \lambda) = \|\mathbf{x}\|_0 + \lambda \|\mathbf{D}\mathbf{x} - \mathbf{y}\|_2^2
+\end{equation}
+
+While this approach doesn't directly solve the combinatorial problem, it provides insight into the trade-off between sparsity and reconstruction fidelity that underlies practical algorithms.
+
+\subsection{Coherence-Based Performance Analysis}
+
+\begin{theorem}[Exact Recovery Conditions]\label{thm:exact_recovery}
+    Let $\mathbf{x}^*$ be a $k$-sparse vector and $\mathbf{y} = \mathbf{D}\mathbf{x}^*$. If the dictionary $\mathbf{D}$ satisfies:
+    \begin{equation}
+        \mu(\mathbf{D}) < \frac{1}{2k-1}
+    \end{equation}
+    then Matching Pursuit exactly recovers $\mathbf{x}^*$ in $k$ iterations.
+\end{theorem}
+
+\begin{proof}[Proof Outline]
+    The proof relies on showing that under the coherence condition, the correlations between the residual and atoms in the true support always exceed correlations with atoms outside the support. This ensures correct atom selection at each iteration.
+\end{proof}
+
+\section{Implementation Notes}
+
+\subsection{Numerical Considerations}
+
+\begin{itemize}
+    \item \textbf{Dictionary normalization}: Ensure all atoms have unit norm to avoid bias in correlation computations
+    \item \textbf{Numerical precision}: Use appropriate stopping criteria to handle floating-point arithmetic limitations
+    \item \textbf{Tie-breaking}: Implement consistent tie-breaking rules for atoms with equal correlations
+\end{itemize}
+
+\subsection{Computational Optimizations}
+
+\begin{itemize}
+    \item \textbf{Precomputed norms}: Store $\|\mathbf{d}_j\|_2^2$ values to avoid repeated computation
+    \item \textbf{Matrix-vector products}: Utilize optimized BLAS routines for correlation computations
+    \item \textbf{Early stopping}: Monitor convergence criteria to avoid unnecessary iterations
+\end{itemize}
+
+\subsection{Parameter Selection Guidelines}
+
+\begin{itemize}
+    \item \textbf{Maximum sparsity}: Set based on expected signal characteristics and computational constraints
+    \item \textbf{Residual threshold}: Choose based on noise level and desired approximation quality
+    \item \textbf{Dictionary size}: Balance representational power with computational complexity
+\end{itemize}
+
+\newpage
+
+% NOTE: This section provides comprehensive references and notation
+\section{Notation and Terminology}
+
+\subsection{Mathematical Notation}
+
+\begin{center}
+    \begin{tabular}{ll}
+        \toprule
+        \textbf{Symbol}                          & \textbf{Definition}                             \\
+        \midrule
+        $\mathbf{y} \in \mathbb{R}^m$            & Observed signal vector                          \\
+        $\mathbf{D} \in \mathbb{R}^{m \times n}$ & Dictionary matrix with $n > m$                  \\
+        $\mathbf{x} \in \mathbb{R}^n$            & Sparse coefficient vector                       \\
+        $\mathbf{d}_j$                           & $j$-th column (atom) of dictionary $\mathbf{D}$ \\
+        $\|\mathbf{x}\|_0$                       & $\ell_0$ pseudo-norm (cardinality)              \\
+        $\|\mathbf{x}\|_p$                       & $\ell_p$ norm: $(\sum_i |x_i|^p)^{1/p}$         \\
+        $\mathbf{r}^{(k)}$                       & Residual at iteration $k$                       \\
+        $\mathbf{x}^{(k)}$                       & Coefficient estimate at iteration $k$           \\
+        $\Omega^{(k)}$                           & Active set (support) at iteration $k$           \\
+        $\mu(\mathbf{D})$                        & Coherence of dictionary $\mathbf{D}$            \\
+        $\supp(\mathbf{x})$                      & Support of vector $\mathbf{x}$                  \\
+        $\spn(\mathcal{S})$                      & Linear span of set $\mathcal{S}$                \\
+        $\argmin_x f(x)$                         & Argument minimizing function $f$                \\
+        $\card(\mathcal{S})$                     & Cardinality of set $\mathcal{S}$                \\
+        \bottomrule
+    \end{tabular}
+\end{center}
+
+\subsection{Algorithmic Terminology}
+
+\begin{description}
+    \item[Atom] A single column of the dictionary matrix
+    \item[Active set] The set of indices corresponding to non-zero coefficients
+    \item[Support] The locations of non-zero elements in a sparse vector
+    \item[Residual] The approximation error at each iteration
+    \item[Sweep stage] The process of testing all atoms for best correlation
+    \item[Greedy selection] Locally optimal choice without global consideration
+    \item[Sparsity level] The number of non-zero coefficients ($\ell_0$ norm)
+    \item[Coherence] Maximum absolute correlation between distinct dictionary atoms
+\end{description}
+
+\subsection{Problem Classifications}
+
+\begin{description}
+    \item[$P_0$ problem] Exact $\ell_0$ minimization (NP-hard)
+    \item[$P_1$ problem] $\ell_1$ relaxation (convex, tractable)
+    \item[Matching Pursuit] Greedy $\ell_0$ approximation algorithm
+    \item[Orthogonal MP] Greedy algorithm with orthogonality constraints
+    \item[Basis Pursuit] $\ell_1$ minimization approach to sparse coding
+    \item[LASSO] $\ell_1$-regularized least squares
+\end{description}
+
+\section{Conclusion}
+
+This comprehensive treatment of $\ell_0$ optimization and the Matching Pursuit algorithm establishes the mathematical foundations for understanding sparse coding in overcomplete dictionaries. The key insights—that sparsity induces a union of subspaces structure, that exact optimization is computationally intractable, and that greedy algorithms provide practical approximations—form the basis for more advanced sparse coding techniques.
+
+The theoretical framework developed here, including the geometric interpretation of sparsity constraints, the complexity analysis of exact methods, and the mathematical derivation of the Matching Pursuit algorithm, provides the necessary background for understanding modern sparse representation theory and its applications across signal processing, machine learning, and computational mathematics.
+
+Future developments in this field continue to build upon these foundational concepts, addressing the limitations of basic greedy methods through orthogonal projections, convex relaxations, and adaptive dictionary learning approaches that will be explored in subsequent lectures.
+
+\end{document}
