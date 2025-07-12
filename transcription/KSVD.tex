@@ -1,0 +1,513 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\argmin}{argmin}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\trace}{trace}
+\DeclareMathOperator{\diag}{diag}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+\newcommand{\R}{\mathbb{R}}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{example}{Example}[section]
+\newtheorem{remark}{Remark}[section]
+
+\title{Dictionary Learning via K-SVD Algorithm: \\ Theory, Implementation, and Applications}
+\author{Lecture Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+% NOTE: This document provides comprehensive notes on dictionary learning using the K-SVD algorithm,
+% expanding on the original lecture transcript with enhanced mathematical rigor and detailed derivations.
+
+\tableofcontents
+\newpage
+
+\section{Introduction to Dictionary Learning}
+
+Dictionary learning represents a fundamental paradigm in signal processing and machine learning, where the objective is to discover optimal sparse representations of data. Unlike traditional approaches that rely on pre-constructed bases such as the Discrete Cosine Transform (DCT) or Principal Component Analysis (PCA), dictionary learning adapts the representation to the specific characteristics of the training data.
+
+\subsection{Motivation and Historical Context}
+
+The concept of dictionary learning emerged from the intersection of sparse coding theory and matrix factorization techniques. While classical orthogonal transforms like DCT and PCA provide optimal representations for specific signal classes, they often fail to capture the intrinsic structure of complex, real-world data.
+
+\begin{definition}[Dictionary Learning Problem]
+    Given a set of training signals $\vec{y}_1, \vec{y}_2, \ldots, \vec{y}_N \in \R^n$, the dictionary learning problem seeks to find:
+    \begin{itemize}
+        \item A dictionary matrix $\mathbf{D} \in \R^{n \times m}$ with $m > n$ (redundant dictionary)
+        \item Sparse coefficient vectors $\vec{x}_1, \vec{x}_2, \ldots, \vec{x}_N \in \R^m$
+    \end{itemize}
+    such that $\vec{y}_i \approx \mathbf{D}\vec{x}_i$ for all $i = 1, 2, \ldots, N$, where each $\vec{x}_i$ has at most $T_0$ non-zero entries.
+\end{definition}
+
+\subsection{Problem Formulation}
+
+Let $\mathbf{Y} = [\vec{y}_1, \vec{y}_2, \ldots, \vec{y}_N] \in \R^{n \times N}$ denote the training matrix, where each column represents a training signal. Similarly, let $\mathbf{X} = [\vec{x}_1, \vec{x}_2, \ldots, \vec{x}_N] \in \R^{m \times N}$ represent the sparse coefficient matrix.
+
+The dictionary learning problem can be formulated as the following optimization:
+
+\begin{equation}\label{eq:dict_learning_main}
+    \min_{\mathbf{D}, \mathbf{X}} \norm{\mathbf{Y} - \mathbf{D}\mathbf{X}}_F^2 \quad \text{subject to} \quad \norm{\vec{x}_i}_0 \leq T_0, \quad \forall i = 1, 2, \ldots, N
+\end{equation}
+
+where $\norm{\cdot}_F$ denotes the Frobenius norm and $\norm{\cdot}_0$ is the $\ell_0$ pseudo-norm counting non-zero entries.
+
+\paragraph{Normalization Constraint:} To resolve scaling ambiguities, we impose the constraint that each column of $\mathbf{D}$ has unit $\ell_2$ norm:
+\begin{equation}\label{eq:unit_norm}
+    \norm{\vec{d}_j}_2 = 1, \quad \forall j = 1, 2, \ldots, m
+\end{equation}
+
+\subsection{Challenges and Non-Convexity}
+
+The optimization problem \eqref{eq:dict_learning_main} presents several fundamental challenges:
+
+\begin{enumerate}
+    \item \textbf{Non-convexity}: The objective function is non-convex in the joint variables $(\mathbf{D}, \mathbf{X})$, even though it is convex in each variable individually when the other is fixed.
+
+    \item \textbf{Combinatorial complexity}: The $\ell_0$ constraint renders the problem NP-hard in general.
+
+    \item \textbf{Solution ambiguity}: Multiple equivalent solutions exist due to:
+          \begin{itemize}
+              \item Column permutations of $\mathbf{D}$ with corresponding row permutations of $\mathbf{X}$
+              \item Sign ambiguities: $(\vec{d}_j, \vec{x}_j) \equiv (-\vec{d}_j, -\vec{x}_j)$
+          \end{itemize}
+\end{enumerate}
+
+\newpage
+
+\section{The K-SVD Algorithm}
+
+The K-SVD (K-Singular Value Decomposition) algorithm provides an efficient heuristic solution to the dictionary learning problem through alternating optimization.
+
+\subsection{Block Coordinate Descent Framework}
+
+K-SVD employs a block coordinate descent strategy, alternating between two phases:
+
+\begin{enumerate}
+    \item \textbf{Sparse Coding Phase}: Fix $\mathbf{D}$ and solve for $\mathbf{X}$
+    \item \textbf{Dictionary Update Phase}: Fix $\mathbf{X}$ and update $\mathbf{D}$
+\end{enumerate}
+
+\begin{algorithm}[H]
+    \caption{K-SVD Algorithm}
+    \begin{algorithmic}[1]
+        \STATE \textbf{Input:} Training matrix $\mathbf{Y} \in \R^{n \times N}$, sparsity level $T_0$, dictionary size $m$
+        \STATE \textbf{Initialize:} $\mathbf{D}^{(0)} \in \R^{n \times m}$ with normalized columns
+        \FOR{$k = 0, 1, 2, \ldots$ until convergence}
+        \STATE \textbf{Sparse Coding:}
+        \FOR{$i = 1, \ldots, N$}
+        \STATE $\vec{x}_i^{(k+1)} = \argmin_{\vec{x}} \norm{\vec{y}_i - \mathbf{D}^{(k)}\vec{x}}_2^2$ subject to $\norm{\vec{x}}_0 \leq T_0$
+        \ENDFOR
+        \STATE \textbf{Dictionary Update:}
+        \FOR{$j = 1, \ldots, m$}
+        \STATE Update $\vec{d}_j^{(k+1)}$ and corresponding coefficients (Section \ref{sec:dict_update})
+        \ENDFOR
+        \ENDFOR
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Sparse Coding Phase}
+
+The sparse coding phase solves the following problem for each training signal:
+
+\begin{equation}\label{eq:sparse_coding}
+    \vec{x}_i^{(k+1)} = \argmin_{\vec{x}} \norm{\vec{y}_i - \mathbf{D}^{(k)}\vec{x}}_2^2 \quad \text{subject to} \quad \norm{\vec{x}}_0 \leq T_0
+\end{equation}
+
+This is precisely the sparse coding problem discussed in previous lectures, which can be solved using greedy algorithms such as:
+
+\begin{itemize}
+    \item \textbf{Orthogonal Matching Pursuit (OMP)}: Iteratively selects atoms that best correlate with the current residual
+    \item \textbf{Matching Pursuit (MP)}: Similar to OMP but without orthogonalization
+    \item \textbf{Basis Pursuit}: Convex relaxation using $\ell_1$ norm
+\end{itemize}
+
+% NOTE: The sparse coding phase is computationally independent for each signal,
+% allowing for parallel implementation
+
+\subsection{Dictionary Update Phase}\label{sec:dict_update}
+
+The dictionary update phase constitutes the core innovation of K-SVD. Rather than updating the entire dictionary simultaneously, K-SVD updates one column at a time while simultaneously updating the corresponding sparse coefficients.
+
+\subsubsection{Matrix Factorization Perspective}
+
+Consider the error matrix:
+\begin{equation}\label{eq:error_matrix}
+    \mathbf{E} = \mathbf{Y} - \mathbf{D}\mathbf{X}
+\end{equation}
+
+Using the fundamental matrix identity, we can decompose the product $\mathbf{D}\mathbf{X}$ as:
+\begin{equation}\label{eq:matrix_decomp}
+    \mathbf{D}\mathbf{X} = \sum_{j=1}^{m} \vec{d}_j \vec{x}_j^T
+\end{equation}
+
+where $\vec{x}_j^T$ denotes the $j$-th row of $\mathbf{X}$.
+
+% NOTE: This decomposition allows us to isolate the contribution of each dictionary atom
+
+\subsubsection{Isolated Column Update}
+
+To update the $j_0$-th column of $\mathbf{D}$, we rewrite equation \eqref{eq:matrix_decomp} as:
+
+\begin{equation}\label{eq:isolated_column}
+    \mathbf{D}\mathbf{X} = \sum_{j \neq j_0} \vec{d}_j \vec{x}_j^T + \vec{d}_{j_0} \vec{x}_{j_0}^T
+\end{equation}
+
+Define the error matrix excluding the $j_0$-th atom:
+\begin{equation}\label{eq:error_j0}
+    \mathbf{E}_{j_0} = \mathbf{Y} - \sum_{j \neq j_0} \vec{d}_j \vec{x}_j^T
+\end{equation}
+
+The update problem becomes:
+\begin{equation}\label{eq:rank_one_approx}
+    \min_{\vec{d}_{j_0}, \vec{x}_{j_0}^T} \norm{\mathbf{E}_{j_0} - \vec{d}_{j_0} \vec{x}_{j_0}^T}_F^2 \quad \text{subject to} \quad \norm{\vec{d}_{j_0}}_2 = 1
+\end{equation}
+
+This is a rank-one matrix approximation problem, optimally solved using the Singular Value Decomposition (SVD).
+
+\subsubsection{SVD Solution}
+
+\begin{theorem}[Rank-One Matrix Approximation]\label{thm:rank_one}
+    Let $\mathbf{A} \in \R^{n \times N}$ be given. The solution to
+    \begin{equation}
+        \min_{\vec{u}, \vec{v}} \norm{\mathbf{A} - \vec{u}\vec{v}^T}_F^2 \quad \text{subject to} \quad \norm{\vec{u}}_2 = 1
+    \end{equation}
+    is given by $\vec{u} = \vec{u}_1$ and $\vec{v}^T = \sigma_1 \vec{v}_1^T$, where $\mathbf{A} = \sum_{i=1}^{\min(n,N)} \sigma_i \vec{u}_i \vec{v}_i^T$ is the SVD of $\mathbf{A}$.
+\end{theorem}
+
+\begin{proof}
+    The Frobenius norm can be expressed as:
+    \begin{align}
+        \norm{\mathbf{A} - \vec{u}\vec{v}^T}_F^2 & = \norm{\mathbf{A}}_F^2 - 2\trace(\mathbf{A}^T\vec{u}\vec{v}^T) + \norm{\vec{u}\vec{v}^T}_F^2 \\
+                                                 & = \norm{\mathbf{A}}_F^2 - 2\vec{v}^T\mathbf{A}^T\vec{u} + \norm{\vec{v}}_2^2
+    \end{align}
+
+    Since $\norm{\vec{u}}_2 = 1$, maximizing $\vec{v}^T\mathbf{A}^T\vec{u}$ is equivalent to finding the leading singular vectors of $\mathbf{A}$.
+\end{proof}
+
+\subsubsection{Sparsity Preservation}
+
+A critical challenge in the dictionary update is preserving the sparsity structure of $\mathbf{X}$. The naive application of Theorem \ref{thm:rank_one} would yield a dense row vector $\vec{x}_{j_0}^T$, violating the sparse coding constraint.
+
+\paragraph{Solution - Restricted SVD:} K-SVD addresses this by restricting the update to only those training signals that actually use the $j_0$-th atom:
+
+\begin{equation}\label{eq:support_set}
+    \Omega_{j_0} = \{i : x_{j_0,i} \neq 0\}
+\end{equation}
+
+Define the restricted error matrix:
+\begin{equation}\label{eq:restricted_error}
+    \mathbf{E}_{j_0}^R = \mathbf{E}_{j_0}(:, \Omega_{j_0})
+\end{equation}
+
+The restricted update problem becomes:
+\begin{equation}\label{eq:restricted_update}
+    \min_{\vec{d}_{j_0}, \vec{x}_{j_0}^R} \norm{\mathbf{E}_{j_0}^R - \vec{d}_{j_0} (\vec{x}_{j_0}^R)^T}_F^2 \quad \text{subject to} \quad \norm{\vec{d}_{j_0}}_2 = 1
+\end{equation}
+
+where $\vec{x}_{j_0}^R$ contains only the non-zero elements of $\vec{x}_{j_0}^T$.
+
+\begin{algorithm}[H]
+    \caption{Dictionary Update for Column $j_0$}
+    \begin{algorithmic}[1]
+        \STATE Compute error matrix: $\mathbf{E}_{j_0} = \mathbf{Y} - \sum_{j \neq j_0} \vec{d}_j \vec{x}_j^T$
+        \STATE Identify support: $\Omega_{j_0} = \{i : x_{j_0,i} \neq 0\}$
+        \STATE Extract restricted matrix: $\mathbf{E}_{j_0}^R = \mathbf{E}_{j_0}(:, \Omega_{j_0})$
+        \STATE Compute SVD: $\mathbf{E}_{j_0}^R = \mathbf{U}\mathbf{\Sigma}\mathbf{V}^T$
+        \STATE Update dictionary: $\vec{d}_{j_0} = \vec{u}_1$
+        \STATE Update coefficients: $\vec{x}_{j_0}^R = \sigma_1 \vec{v}_1$
+        \STATE Restore to full representation: $\vec{x}_{j_0}^T(\Omega_{j_0}) = \vec{x}_{j_0}^R$
+    \end{algorithmic}
+\end{algorithm}
+
+\newpage
+
+\section{Theoretical Analysis}
+
+\subsection{Convergence Properties}
+
+The K-SVD algorithm, while lacking theoretical convergence guarantees, exhibits several desirable properties in practice.
+
+\begin{proposition}[Monotonic Decrease]\label{prop:monotonic}
+    Each iteration of K-SVD does not increase the objective function value:
+    \begin{equation}
+        \norm{\mathbf{Y} - \mathbf{D}^{(k+1)}\mathbf{X}^{(k+1)}}_F^2 \leq \norm{\mathbf{Y} - \mathbf{D}^{(k)}\mathbf{X}^{(k)}}_F^2
+    \end{equation}
+\end{proposition}
+
+\begin{proof}
+    Each phase of K-SVD solves an optimization problem optimally:
+    \begin{itemize}
+        \item Sparse coding phase: OMP finds the optimal sparse approximation for fixed $\mathbf{D}$
+        \item Dictionary update: SVD provides the optimal rank-one approximation for each column
+    \end{itemize}
+    Since each step decreases (or maintains) the objective value, the overall algorithm is monotonically decreasing.
+\end{proof}
+
+\subsection{Local Minima and Initialization}
+
+Due to the non-convex nature of the problem, K-SVD can converge to local minima. The quality of the final solution depends significantly on initialization strategies.
+
+\begin{remark}[Initialization Strategies]
+    Common initialization approaches include:
+    \begin{enumerate}
+        \item \textbf{Random initialization}: Gaussian random vectors normalized to unit norm
+        \item \textbf{Data-driven initialization}: Select random columns from the training set
+        \item \textbf{Overcomplete DCT}: Use redundant DCT basis as starting point
+    \end{enumerate}
+\end{remark}
+
+\subsection{Computational Complexity}
+
+\begin{theorem}[Complexity Analysis]\label{thm:complexity}
+    The computational complexity of one K-SVD iteration is:
+    \begin{equation}
+        \mathcal{O}(T_0 \cdot m \cdot n \cdot N + m \cdot n \cdot \bar{s})
+    \end{equation}
+    where $\bar{s}$ is the average number of non-zero coefficients per column.
+\end{theorem}
+
+\begin{proof}
+    \begin{itemize}
+        \item \textbf{Sparse coding phase}: OMP requires $\mathcal{O}(T_0 \cdot m \cdot n)$ operations per signal, totaling $\mathcal{O}(T_0 \cdot m \cdot n \cdot N)$
+        \item \textbf{Dictionary update phase}: For each column, SVD of an $n \times \bar{s}$ matrix requires $\mathcal{O}(n \cdot \bar{s})$ operations, totaling $\mathcal{O}(m \cdot n \cdot \bar{s})$
+    \end{itemize}
+\end{proof}
+
+\newpage
+
+\section{Implementation Considerations}
+
+\subsection{Atom Usage and Replacement}
+
+A practical challenge in K-SVD is ensuring that all dictionary atoms are actively used in the sparse representation. Unused atoms can arise from poor initialization or local minima.
+
+\begin{definition}[Atom Usage]
+    Define the usage count of atom $j$ as:
+    \begin{equation}
+        U_j = \sum_{i=1}^N \mathbf{1}_{x_{j,i} \neq 0}
+    \end{equation}
+    where $\mathbf{1}_{(\cdot)}$ is the indicator function.
+\end{definition}
+
+\paragraph{Replacement Strategy:} Atoms with usage count below a threshold are replaced with training signals that have the largest approximation error:
+
+\begin{equation}
+    \vec{d}_j^{\text{new}} = \frac{\vec{y}_{\text{argmax}_i \norm{\vec{y}_i - \mathbf{D}\vec{x}_i}_2^2}}{\norm{\vec{y}_{\text{argmax}_i \norm{\vec{y}_i - \mathbf{D}\vec{x}_i}_2^2}}_2}
+\end{equation}
+
+\subsection{Stopping Criteria}
+
+Multiple stopping criteria can be employed:
+
+\begin{enumerate}
+    \item \textbf{Maximum iterations}: $k \geq k_{\max}$
+    \item \textbf{Convergence tolerance}: $\frac{\norm{\mathbf{Y} - \mathbf{D}^{(k)}\mathbf{X}^{(k)}}_F^2}{\norm{\mathbf{Y}}_F^2} < \epsilon$
+    \item \textbf{Relative improvement}: $\frac{\mathcal{L}^{(k-1)} - \mathcal{L}^{(k)}}{\mathcal{L}^{(k-1)}} < \delta$
+\end{enumerate}
+
+where $\mathcal{L}^{(k)}$ denotes the objective function value at iteration $k$.
+
+\subsection{Memory and Computational Optimizations}
+
+\begin{itemize}
+    \item \textbf{Parallel sparse coding}: Each signal's sparse coding is independent
+    \item \textbf{Efficient SVD}: Use truncated SVD for small matrices
+    \item \textbf{Memory management}: Store only non-zero coefficients in sparse format
+\end{itemize}
+
+\newpage
+
+\section{Applications and Extensions}
+
+\subsection{Image Processing Applications}
+
+Dictionary learning has found widespread application in image processing tasks:
+
+\begin{example}[Image Denoising]
+    For a noisy image $\mathbf{Y} = \mathbf{X}_{\text{clean}} + \mathbf{N}$, where $\mathbf{N}$ is additive noise, the denoising process involves:
+    \begin{enumerate}
+        \item Learn dictionary $\mathbf{D}$ from image patches
+        \item Compute sparse representation: $\vec{x}_i = \text{OMP}(\mathbf{D}, \vec{y}_i, T_0)$
+        \item Reconstruct: $\hat{\vec{x}}_i = \mathbf{D}\vec{x}_i$
+    \end{enumerate}
+\end{example}
+
+\subsection{Signal Processing Applications}
+
+\begin{example}[ECG Signal Analysis]
+    For electrocardiogram (ECG) analysis:
+    \begin{itemize}
+        \item Training data: Heartbeat segments from multiple patients
+        \item Dictionary atoms: Capture characteristic waveform patterns
+        \item Applications: Anomaly detection, compression, classification
+    \end{itemize}
+\end{example}
+
+\subsection{Extensions and Variants}
+
+\subsubsection{Online Dictionary Learning}
+
+For streaming data applications, online variants of K-SVD have been developed:
+
+\begin{equation}
+    \mathbf{D}^{(k+1)} = \mathbf{D}^{(k)} + \eta_k \nabla_{\mathbf{D}} \mathcal{L}(\mathbf{D}^{(k)}, \vec{x}^{(k)})
+\end{equation}
+
+where $\eta_k$ is the learning rate and $\vec{x}^{(k)}$ is the current sample.
+
+\subsubsection{Structured Dictionary Learning}
+
+Incorporate structural constraints on the dictionary:
+
+\begin{itemize}
+    \item \textbf{Shift-invariant dictionaries}: For translation-invariant signals
+    \item \textbf{Separable dictionaries}: $\mathbf{D} = \mathbf{D}_1 \otimes \mathbf{D}_2$ for 2D signals
+    \item \textbf{Hierarchical dictionaries}: Multi-resolution representations
+\end{itemize}
+
+\subsubsection{Supervised Dictionary Learning}
+
+Incorporate label information for classification tasks:
+
+\begin{equation}
+    \min_{\mathbf{D}, \mathbf{X}, \mathbf{W}} \norm{\mathbf{Y} - \mathbf{D}\mathbf{X}}_F^2 + \lambda \norm{\mathbf{L} - \mathbf{W}\mathbf{X}}_F^2
+\end{equation}
+
+where $\mathbf{L}$ contains class labels and $\mathbf{W}$ is a classifier.
+
+\newpage
+
+\section{Theoretical Connections and Future Directions}
+
+\subsection{Connection to Matrix Factorization}
+
+Dictionary learning can be viewed as a special case of non-negative matrix factorization (NMF) with sparsity constraints:
+
+\begin{equation}
+    \min_{\mathbf{D} \geq 0, \mathbf{X} \geq 0} \norm{\mathbf{Y} - \mathbf{D}\mathbf{X}}_F^2 + \lambda R(\mathbf{X})
+\end{equation}
+
+where $R(\mathbf{X})$ is a sparsity-inducing regularizer.
+
+\subsection{Deep Learning Connections}
+
+Modern deep learning architectures can be viewed as learned hierarchical dictionaries:
+
+\begin{itemize}
+    \item \textbf{Sparse autoencoders}: Learn overcomplete representations
+    \item \textbf{Convolutional sparse coding}: Shift-invariant dictionary learning
+    \item \textbf{Transformer attention}: Learned sparse attention patterns
+\end{itemize}
+
+\subsection{Open Research Questions}
+
+\begin{enumerate}
+    \item \textbf{Theoretical guarantees}: Conditions for global optimality
+    \item \textbf{Sample complexity}: How many training samples are needed?
+    \item \textbf{Generalization bounds}: Performance on unseen data
+    \item \textbf{Computational efficiency}: Faster algorithms for large-scale problems
+\end{enumerate}
+
+\section{Summary and Conclusions}
+
+Dictionary learning via K-SVD represents a powerful framework for discovering adaptive sparse representations of data. The algorithm's key innovations include:
+
+\begin{itemize}
+    \item \textbf{Joint optimization}: Simultaneous update of dictionary and coefficients
+    \item \textbf{Sparsity preservation}: Maintaining sparse structure during updates
+    \item \textbf{Computational efficiency}: Leveraging SVD for optimal rank-one approximation
+\end{itemize}
+
+The method has found widespread application across signal processing, image analysis, and machine learning domains. While theoretical guarantees remain limited, empirical performance has been consistently strong across diverse applications.
+
+Future research directions include developing theoretical foundations, improving computational efficiency, and extending to deep learning architectures. The fundamental principle of learning adaptive sparse representations continues to influence modern machine learning methodologies.
+
+\begin{center}
+    \boxed{\text{Dictionary learning bridges classical signal processing and modern machine learning}}
+\end{center}
+
+% NOTE: This concludes the comprehensive treatment of K-SVD dictionary learning.
+% The document provides both theoretical foundations and practical implementation guidance.
+
+\newpage
+
+\section{Appendix: Mathematical Details}
+
+\subsection{Frobenius Norm Properties}
+
+The Frobenius norm of a matrix $\mathbf{A} \in \R^{m \times n}$ is defined as:
+\begin{equation}
+    \norm{\mathbf{A}}_F = \sqrt{\sum_{i=1}^m \sum_{j=1}^n |a_{ij}|^2} = \sqrt{\trace(\mathbf{A}^T\mathbf{A})}
+\end{equation}
+
+Key properties include:
+\begin{itemize}
+    \item Unitarily invariant: $\norm{\mathbf{U}\mathbf{A}\mathbf{V}}_F = \norm{\mathbf{A}}_F$ for orthogonal $\mathbf{U}, \mathbf{V}$
+    \item Submultiplicative: $\norm{\mathbf{A}\mathbf{B}}_F \leq \norm{\mathbf{A}}_F \norm{\mathbf{B}}_F$
+    \item Equivalent to vector norm: $\norm{\mathbf{A}}_F = \norm{\text{vec}(\mathbf{A})}_2$
+\end{itemize}
+
+\subsection{Singular Value Decomposition}
+
+For any matrix $\mathbf{A} \in \R^{m \times n}$, the SVD is:
+\begin{equation}
+    \mathbf{A} = \mathbf{U}\mathbf{\Sigma}\mathbf{V}^T
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\mathbf{U} \in \R^{m \times m}$ is orthogonal
+    \item $\mathbf{V} \in \R^{n \times n}$ is orthogonal
+    \item $\mathbf{\Sigma} \in \R^{m \times n}$ is diagonal with $\sigma_1 \geq \sigma_2 \geq \ldots \geq \sigma_{\min(m,n)} \geq 0$
+\end{itemize}
+
+The truncated SVD provides the best rank-$k$ approximation:
+\begin{equation}
+    \mathbf{A}_k = \sum_{i=1}^k \sigma_i \vec{u}_i \vec{v}_i^T
+\end{equation}
+
+\subsection{Computational Complexity Tables}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|c|c|}
+        \hline
+        \textbf{Operation}        & \textbf{Complexity}                & \textbf{Comment}                \\
+        \hline
+        OMP (per signal)          & $\mathcal{O}(T_0 \cdot m \cdot n)$ & Greedy selection                \\
+        SVD ($n \times s$ matrix) & $\mathcal{O}(ns^2)$                & When $s \ll n$                  \\
+        Matrix multiplication     & $\mathcal{O}(mnp)$                 & $m \times n$ times $n \times p$ \\
+        Frobenius norm            & $\mathcal{O}(mn)$                  & Element-wise operations         \\
+        \hline
+    \end{tabular}
+    \caption{Computational complexity of key operations in K-SVD}
+\end{table}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+% NOTE: Add relevant references for dictionary learning, sparse coding, and K-SVD algorithm
+
+\end{document}
