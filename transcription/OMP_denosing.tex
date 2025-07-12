@@ -1,0 +1,409 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{matrix,arrows}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\argmax}{arg\,max}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\Tr}{Tr}
+\DeclareMathOperator{\rank}{rank}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{algorithm}[theorem]{Algorithm}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Advanced Signal Processing: Orthogonal Matching Pursuit\\for Image Denoising}
+\author{Lecture Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% NOTE: This document provides comprehensive coverage of OMP denoising techniques,
+% expanding on the original lecture transcript with detailed mathematical derivations,
+% theoretical foundations, and practical implementations.
+
+\section{Introduction and Motivation}
+\label{sec:introduction}
+
+Image denoising represents a fundamental challenge in signal processing, where the objective is to recover a clean signal $\vec{x} \in \mathbb{R}^n$ from its noisy observation $\vec{y} = \vec{x} + \vec{e}$, where $\vec{e}$ represents additive noise. Traditional approaches, such as Discrete Cosine Transform (DCT) based methods, rely on fixed orthogonal bases that may not optimally represent the underlying signal structure.
+
+The \textit{Orthogonal Matching Pursuit} (OMP) algorithm emerges as a powerful alternative by employing learned or adaptive dictionaries $\mathbf{D} \in \mathbb{R}^{n \times k}$ that can better capture the intrinsic characteristics of specific signal classes. Unlike DCT bases, these dictionaries are typically overcomplete ($k > n$) and non-orthogonal, necessitating sophisticated pursuit algorithms for sparse representation.
+
+\subsection{Problem Formulation}
+\label{subsec:problem_formulation}
+
+Consider a noisy image patch $\vec{y} \in \mathbb{R}^n$ corrupted by additive white Gaussian noise:
+\begin{equation}
+    \vec{y} = \vec{x} + \vec{e}, \quad \vec{e} \sim \mathcal{N}(0, \sigma^2 \mathbf{I})
+\end{equation}
+
+The denoising objective seeks to estimate the clean patch $\vec{x}$ by solving the sparse coding problem:
+\begin{align}
+    \hat{\vec{\alpha}} & = \argmin_{\vec{\alpha}} \norm{\vec{y} - \mathbf{D}\vec{\alpha}}_2^2 + \lambda \norm{\vec{\alpha}}_0 \label{eq:sparse_coding} \\
+    \hat{\vec{x}}      & = \mathbf{D}\hat{\vec{\alpha}} \label{eq:reconstruction}
+\end{align}
+
+where $\mathbf{D}$ is the dictionary matrix, $\vec{\alpha}$ represents the sparse coefficients, and $\lambda$ controls the sparsity-fidelity tradeoff.
+
+\newpage
+
+\section{Theoretical Foundations}
+\label{sec:theoretical_foundations}
+
+\subsection{Sparse Representation Theory}
+\label{subsec:sparse_representation}
+
+The fundamental assumption underlying sparse coding is that natural signals admit sparse representations in appropriately chosen dictionaries. This assumption is formalized through the following concepts:
+
+\begin{definition}[Sparsity]
+    A vector $\vec{\alpha} \in \mathbb{R}^k$ is said to be $s$-sparse if $\norm{\vec{\alpha}}_0 \leq s$, where $\norm{\cdot}_0$ denotes the $\ell_0$ pseudo-norm counting non-zero entries.
+\end{definition}
+
+\begin{definition}[Coherence]
+    The coherence of a dictionary $\mathbf{D}$ is defined as:
+    \begin{equation}
+        \mu(\mathbf{D}) = \max_{i \neq j} \frac{|\inner{\vec{d}_i}{\vec{d}_j}|}{\norm{\vec{d}_i}_2 \norm{\vec{d}_j}_2}
+    \end{equation}
+    where $\vec{d}_i$ denotes the $i$-th column of $\mathbf{D}$.
+\end{definition}
+
+The coherence quantifies the maximum correlation between distinct dictionary atoms and plays a crucial role in recovery guarantees.
+
+\subsection{Restricted Isometry Property}
+\label{subsec:rip}
+
+For theoretical analysis of pursuit algorithms, the Restricted Isometry Property (RIP) provides essential recovery conditions:
+
+\begin{definition}[RIP]
+    A matrix $\mathbf{D}$ satisfies the RIP of order $s$ with constant $\delta_s$ if:
+    \begin{equation}
+        (1 - \delta_s)\norm{\vec{\alpha}}_2^2 \leq \norm{\mathbf{D}\vec{\alpha}}_2^2 \leq (1 + \delta_s)\norm{\vec{\alpha}}_2^2
+    \end{equation}
+    for all $s$-sparse vectors $\vec{\alpha}$.
+\end{definition}
+
+\begin{theorem}[OMP Recovery Guarantee]
+    \label{thm:omp_recovery}
+    If $\mathbf{D}$ satisfies RIP with $\delta_{2s} < 1/3$, then OMP with $s$ iterations exactly recovers any $s$-sparse signal in the noiseless case.
+\end{theorem}
+
+\newpage
+
+\section{Orthogonal Matching Pursuit Algorithm}
+\label{sec:omp_algorithm}
+
+The OMP algorithm represents a greedy approach to the NP-hard sparse coding problem \eqref{eq:sparse_coding}. Unlike direct methods, OMP iteratively selects dictionary atoms that best correlate with the current residual.
+
+\subsection{Algorithm Description}
+\label{subsec:algorithm_description}
+
+\begin{algorithm}[Orthogonal Matching Pursuit]
+    \label{alg:omp}
+    \textbf{Input:} Dictionary $\mathbf{D} \in \mathbb{R}^{n \times k}$, signal $\vec{y} \in \mathbb{R}^n$, sparsity level $s$\\
+    \textbf{Output:} Sparse coefficients $\vec{\alpha} \in \mathbb{R}^k$
+    \begin{enumerate}[label=\textbf{\arabic*.}]
+        \item \textbf{Initialization:}
+              \begin{align}
+                  \text{Residual: } \vec{r}^{(0)}    & = \vec{y}   \\
+                  \text{Support: } \mathcal{S}^{(0)} & = \emptyset \\
+                  \text{Iteration counter: } t       & = 0
+              \end{align}
+
+        \item \textbf{Main Loop:} For $t = 0, 1, \ldots, s-1$:
+              \begin{enumerate}[label=\textbf{(\alph*)}]
+                  \item \textbf{Atom Selection:} Find the atom most correlated with residual:
+                        \begin{equation}
+                            j^{(t+1)} = \argmax_{j \notin \mathcal{S}^{(t)}} |\inner{\vec{d}_j}{\vec{r}^{(t)}}|
+                        \end{equation}
+
+                  \item \textbf{Support Update:} Augment the active set:
+                        \begin{equation}
+                            \mathcal{S}^{(t+1)} = \mathcal{S}^{(t)} \cup \{j^{(t+1)}\}
+                        \end{equation}
+
+                  \item \textbf{Least Squares Solution:} Solve for coefficients on active set:
+                        \begin{equation}
+                            \vec{\alpha}_{\mathcal{S}^{(t+1)}} = \argmin_{\vec{\alpha}} \norm{\vec{y} - \mathbf{D}_{\mathcal{S}^{(t+1)}}\vec{\alpha}}_2^2
+                        \end{equation}
+                        where $\mathbf{D}_{\mathcal{S}}$ denotes the submatrix of $\mathbf{D}$ with columns indexed by $\mathcal{S}$.
+
+                  \item \textbf{Residual Update:} Compute new residual:
+                        \begin{equation}
+                            \vec{r}^{(t+1)} = \vec{y} - \mathbf{D}_{\mathcal{S}^{(t+1)}}\vec{\alpha}_{\mathcal{S}^{(t+1)}}
+                        \end{equation}
+              \end{enumerate}
+
+        \item \textbf{Output:} Set $\vec{\alpha}$ with $\vec{\alpha}_{\mathcal{S}^{(s)}} = \vec{\alpha}_{\mathcal{S}^{(s)}}$ and $\vec{\alpha}_i = 0$ for $i \notin \mathcal{S}^{(s)}$.
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Mathematical Analysis}
+\label{subsec:mathematical_analysis}
+
+The least squares solution in step 2c admits a closed-form expression. Let $\mathbf{D}_{\mathcal{S}}$ denote the active submatrix. Then:
+\begin{equation}
+    \vec{\alpha}_{\mathcal{S}} = (\mathbf{D}_{\mathcal{S}}^T \mathbf{D}_{\mathcal{S}})^{-1} \mathbf{D}_{\mathcal{S}}^T \vec{y}
+    = \mathbf{D}_{\mathcal{S}}^{\dagger} \vec{y}
+\end{equation}
+
+\noindent where $\mathbf{D}_{\mathcal{S}}^{\dagger}$ denotes the Moore-Penrose pseudoinverse.
+
+\vspace{1em}
+
+The residual update becomes:
+
+\begin{align}
+    \vec{r}^{(t+1)} & = \vec{y} - \mathbf{D}_{\mathcal{S}} \mathbf{D}_{\mathcal{S}}^{\dagger} \vec{y} \\
+                    & = (\mathbf{I} - \mathbf{P}_{\mathcal{S}}) \vec{y}
+\end{align}
+
+where $\mathbf{P}_{\mathcal{S}} = \mathbf{D}_{\mathcal{S}} \mathbf{D}_{\mathcal{S}}^{\dagger}$ is the orthogonal projector onto the column space of $\mathbf{D}_{\mathcal{S}}$.
+
+\newpage
+
+\section{OMP-Based Image Denoising}
+\label{sec:omp_denoising}
+
+The integration of OMP into image denoising frameworks requires careful consideration of patch processing, dictionary design, and aggregation strategies.
+
+\subsection{Patch-Based Processing}
+\label{subsec:patch_processing}
+
+Natural images exhibit strong local correlations but varying global statistics. The patch-based approach decomposes the image into overlapping patches, each processed independently:
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Patch Extraction:} For image $\mathbf{Y} \in \mathbb{R}^{N \times M}$, extract patches $\{\vec{y}_i\}_{i=1}^P$ where each $\vec{y}_i \in \mathbb{R}^n$ represents a vectorized $\sqrt{n} \times \sqrt{n}$ patch.
+
+    \item \textbf{Sparse Coding:} Apply OMP to each patch:
+          \begin{equation}
+              \hat{\vec{\alpha}}_i = \text{OMP}(\mathbf{D}, \vec{y}_i, s)
+          \end{equation}
+
+    \item \textbf{Reconstruction:} Compute denoised patches:
+          \begin{equation}
+              \hat{\vec{x}}_i = \mathbf{D} \hat{\vec{\alpha}}_i
+          \end{equation}
+
+    \item \textbf{Aggregation:} Reconstruct the full image by averaging overlapping reconstructions.
+\end{enumerate}
+
+\subsection{Dictionary Considerations}
+\label{subsec:dictionary_considerations}
+
+Unlike DCT bases, general dictionaries lack specific structural properties that facilitate certain operations. Key considerations include:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Mean Preservation:} DCT dictionaries contain a DC component (constant vector) that preserves patch means. General dictionaries may lack this property, necessitating explicit mean handling.
+
+    \item \textbf{Orthogonality:} DCT atoms are orthogonal, enabling efficient analysis/synthesis. General dictionaries are typically overcomplete and non-orthogonal.
+
+    \item \textbf{Computational Complexity:} OMP requires matrix-vector products and least squares solutions, increasing computational cost compared to DCT.
+\end{itemize}
+
+\subsection{Mean-Centering Strategy}
+\label{subsec:mean_centering}
+
+To address mean preservation issues, the following strategy is employed:
+
+\begin{align}
+    \text{Mean computation: } \mu_i             & = \frac{1}{n} \sum_{j=1}^n y_{i,j}                \\
+    \text{Centering: } \tilde{\vec{y}}_i        & = \vec{y}_i - \mu_i \vec{1}                       \\
+    \text{Sparse coding: } \hat{\vec{\alpha}}_i & = \text{OMP}(\mathbf{D}, \tilde{\vec{y}}_i, s)    \\
+    \text{Reconstruction: } \hat{\vec{x}}_i     & = \mathbf{D} \hat{\vec{\alpha}}_i + \mu_i \vec{1}
+\end{align}
+
+where $\vec{1}$ denotes the all-ones vector.
+
+\newpage
+
+\section{Dictionary Learning and Optimization}
+\label{sec:dictionary_learning}
+
+The effectiveness of OMP denoising critically depends on dictionary quality. This section explores dictionary learning methodologies and their impact on denoising performance.
+
+\subsection{Dictionary Learning Problem}
+\label{subsec:dict_learning_problem}
+
+Given a collection of training patches $\{\vec{y}_i\}_{i=1}^P$, the dictionary learning problem seeks to find a dictionary $\mathbf{D}$ and sparse codes $\{\vec{\alpha}_i\}_{i=1}^P$ that minimize:
+
+\begin{equation}
+    \min_{\mathbf{D}, \{\vec{\alpha}_i\}} \sum_{i=1}^P \left( \norm{\vec{y}_i - \mathbf{D}\vec{\alpha}_i}_2^2 + \lambda \norm{\vec{\alpha}_i}_0 \right)
+\end{equation}
+
+subject to $\norm{\vec{d}_j}_2 \leq 1$ for all dictionary atoms $\vec{d}_j$.
+
+\subsection{K-SVD Algorithm}
+\label{subsec:ksvd}
+
+The K-SVD algorithm alternates between sparse coding and dictionary updates:
+
+\begin{algorithm}[K-SVD Dictionary Learning]
+    \label{alg:ksvd}
+    \textbf{Input:} Training patches $\{\vec{y}_i\}_{i=1}^P$, dictionary size $k$, sparsity $s$\\
+    \textbf{Output:} Dictionary $\mathbf{D} \in \mathbb{R}^{n \times k}$
+    \begin{enumerate}[label=\textbf{\arabic*.}]
+        \item \textbf{Initialization:} Initialize $\mathbf{D}^{(0)}$ randomly
+        \item \textbf{Iteration:} For $t = 0, 1, \ldots, T-1$:
+              \begin{enumerate}[label=\textbf{(\alph*)}]
+                  \item \textbf{Sparse Coding:} For each patch $i$:
+                        \begin{equation}
+                            \vec{\alpha}_i^{(t+1)} = \text{OMP}(\mathbf{D}^{(t)}, \vec{y}_i, s)
+                        \end{equation}
+
+                  \item \textbf{Dictionary Update:} For each atom $j = 1, \ldots, k$:
+                        \begin{itemize}
+                            \item Define $\mathcal{I}_j = \{i : \alpha_{i,j} \neq 0\}$ (patches using atom $j$)
+                            \item Compute error matrix: $\mathbf{E}_j = \mathbf{Y}_{\mathcal{I}_j} - \sum_{l \neq j} \vec{d}_l \vec{\alpha}_l^T$
+                            \item Update via SVD: $\mathbf{E}_j = \mathbf{U}\mathbf{\Sigma}\mathbf{V}^T$
+                            \item Set $\vec{d}_j = \vec{u}_1$, $\vec{\alpha}_j = \sigma_1 \vec{v}_1$
+                        \end{itemize}
+              \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Computational Complexity Analysis}
+\label{subsec:complexity}
+
+The computational complexity of OMP-based denoising depends on several factors:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{OMP per patch:} $\mathcal{O}(nks)$ where $n$ is patch size, $k$ is dictionary size, $s$ is sparsity
+    \item \textbf{Total patches:} $P = \mathcal{O}(NM)$ for $N \times M$ image
+    \item \textbf{Overall complexity:} $\mathcal{O}(NMnks)$
+\end{itemize}
+
+This represents a significant increase over DCT-based methods with complexity $\mathcal{O}(NMn \log n)$.
+
+\newpage
+
+\section{Experimental Considerations and Results}
+\label{sec:experimental}
+
+\subsection{Performance Metrics}
+\label{subsec:metrics}
+
+Denoising performance is typically evaluated using:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Peak Signal-to-Noise Ratio (PSNR):}
+          \begin{equation}
+              \text{PSNR} = 10 \log_{10} \frac{255^2}{\text{MSE}}
+          \end{equation}
+          where MSE is the mean squared error between clean and denoised images.
+
+    \item \textbf{Structural Similarity Index (SSIM):}
+          \begin{equation}
+              \text{SSIM} = \frac{(2\mu_x\mu_y + c_1)(2\sigma_{xy} + c_2)}{(\mu_x^2 + \mu_y^2 + c_1)(\sigma_x^2 + \sigma_y^2 + c_2)}
+          \end{equation}
+
+    \item \textbf{Visual Quality Assessment:} Subjective evaluation of artifact presence and detail preservation.
+\end{itemize}
+
+\subsection{Dictionary Design Impact}
+\label{subsec:dict_impact}
+
+The choice of dictionary significantly influences denoising performance:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Generic dictionaries:} Learned from diverse natural images, provide broad applicability but may lack specificity.
+
+    \item \textbf{Adaptive dictionaries:} Learned from similar image types, offer superior performance for specific domains.
+
+    \item \textbf{Multiscale dictionaries:} Incorporate multiple resolutions, better capture hierarchical image structures.
+\end{itemize}
+
+\subsection{Parameter Selection}
+\label{subsec:parameter_selection}
+
+Critical parameters requiring careful tuning include:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Sparsity level $s$:} Typically $s = 0.1k$ to $0.3k$ for dictionary size $k$
+    \item \textbf{Patch size:} Common choices are $8 \times 8$ or $16 \times 16$ pixels
+    \item \textbf{Dictionary size:} Usually $k = 4n$ to $8n$ for patch dimension $n$
+    \item \textbf{Overlap stride:} Affects computational cost and reconstruction quality
+\end{itemize}
+
+\newpage
+
+\section{Advanced Topics and Extensions}
+\label{sec:advanced}
+
+\subsection{Regularized OMP}
+\label{subsec:regularized_omp}
+
+Classical OMP may suffer from overfitting in noisy scenarios. Regularized variants incorporate additional constraints:
+
+\begin{equation}
+    \hat{\vec{\alpha}} = \argmin_{\vec{\alpha}} \norm{\vec{y} - \mathbf{D}\vec{\alpha}}_2^2 + \lambda \norm{\vec{\alpha}}_1 + \gamma \norm{\vec{\alpha}}_2^2
+\end{equation}
+
+This formulation bridges OMP and LASSO regression, providing better stability in high-noise regimes.
+
+\subsection{Block-Based OMP}
+\label{subsec:block_omp}
+
+For signals with grouped sparsity patterns, Block-OMP selects entire groups of atoms simultaneously:
+
+\begin{algorithm}[Block-OMP]
+    \label{alg:block_omp}
+    Modify the atom selection step in Algorithm \ref{alg:omp}:
+    \begin{equation}
+        \mathcal{G}^{(t+1)} = \argmax_{\mathcal{G}} \norm{\mathbf{D}_{\mathcal{G}}^T \vec{r}^{(t)}}_2
+    \end{equation}
+    where $\mathcal{G}$ represents predefined groups of atoms.
+\end{algorithm}
+
+\subsection{Adaptive Dictionary Methods}
+\label{subsec:adaptive_dict}
+
+Online dictionary learning adapts dictionaries during denoising:
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item Process patches sequentially
+    \item Update dictionary using stochastic gradient descent
+    \item Maintain computational efficiency through mini-batch processing
+\end{enumerate}
+
+\section{Conclusion and Future Directions}
+\label{sec:conclusion}
+
+Orthogonal Matching Pursuit represents a significant advancement in sparse representation-based denoising, offering superior adaptability compared to fixed transform methods. Key advantages include:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Flexibility:} Accommodates diverse signal characteristics through learned dictionaries
+    \item \textbf{Theoretical Foundation:} Solid mathematical framework with recovery guarantees
+    \item \textbf{Extensibility:} Supports various extensions and modifications
+\end{itemize}
+
+However, challenges remain in computational efficiency and parameter selection. Future research directions include:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Deep Learning Integration:} Combining OMP with neural networks for end-to-end optimization
+    \item \textbf{Real-Time Processing:} Developing accelerated algorithms for practical applications
+    \item \textbf{Multiscale Approaches:} Incorporating hierarchical sparse representations
+\end{itemize}
+\end{document}

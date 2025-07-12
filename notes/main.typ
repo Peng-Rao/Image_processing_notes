@@ -804,6 +804,7 @@ For $k$ iterations, the total complexity is $cal(O)(k m n)$, which is polynomial
 
 #pagebreak()
 
+= Dictionary Learning
 
 
 #pagebreak()
