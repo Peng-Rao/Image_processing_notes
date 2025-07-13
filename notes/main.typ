@@ -659,10 +659,11 @@ Assuming a billion operations per second, exhaustive search would take more time
   )
 ]
 
+#pagebreak()
+
 == Greedy Algorithms for Sparse Coding
 Given the computational intractability of exact $ell_0$ minimization, we turn to greedy approximation algorithms that provide computationally feasible solutions.
 
-=== The Greedy Paradigm
 A *greedy algorithm* for sparse coding makes locally optimal choices at each iteration without reconsidering previous decisions, building up the solution incrementally by adding one dictionary atom at a time.
 
 #example("Coin Change Analogy")[
@@ -683,10 +684,10 @@ The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse c
 
 + *Initialize:*
   $
-    bold(x)^((0)) & = bold(0) quad  & "(coefficient vector)" \
-    bold(r)^((0)) & = bold(y) quad  &           "(residual)" \
-      Omega^((0)) & = emptyset quad &         "(active set)" \
-                k & = 0 quad        &  "(iteration counter)"
+    bold(x)^((0)) & = bold(0) quad      & "(coefficient vector)" \
+    bold(r)^((0)) & = bold(y) quad      &           "(residual)" \
+      Omega^((0)) & = emptyset.rev quad &         "(active set)" \
+                k & = 0 quad            &  "(iteration counter)"
   $
 
 + *Sweep Stage:* For each atom $j = 1, dots, n$, compute the approximation error:
@@ -769,6 +770,60 @@ Each iteration of Matching Pursuit requires:
 - Total per-iteration complexity: $cal(O)(m n)$
 
 For $k$ iterations, the total complexity is $cal(O)(k m n)$, which is polynomial and practically feasible.
+
+#pagebreak()
+
+== Orthogonal Matching Pursuit
+*Orthogonal Matching Pursuit (OMP)* is a variant of Matching Pursuit that enforces orthogonality of the residuals to previously selected atoms. This leads to improved convergence properties and better approximation quality.
+
+The OMP algorithm embodies the greedy principle for sparse coding with orthogonal projections:
+
+*Input:* Signal $bold(y)$, dictionary $bold(D)$ (normalized), stopping criterion \
+*Output:* Sparse representation $bold(x)$
+
++ *Initialize:*
+  $
+    bold(x)^((0)) & = bold(0) quad      & "(coefficient vector)" \
+    bold(r)^((0)) & = bold(y) quad      &           "(residual)" \
+      Omega^((0)) & = emptyset.rev quad &         "(active set)" \
+                k & = 0 quad            &  "(iteration counter)"
+  $
+
++ *Atom Selection:* Choose the atom with maximum correlation:
+  $
+    j^* = arg max_(j=1,dots,n) |angle.l bold(d)_j \, bold(r)^((k)) angle.r|
+  $ <eq:omp_selection>
+
++ *Active Set Update:*
+  $
+    Omega^((k+1)) = Omega^((k)) union {j^*}
+  $
+
++ *Orthogonal Projection:* Solve the least squares problem over the active set:
+  $
+    bold(alpha)_Omega^((k+1)) = arg min_(bold(z)) norm(bold(D)_Omega bold(z) - bold(y))_2^2
+  $ <eq:omp_projection>
+
+  where $bold(D)_Omega$ is the sub-matrix of $bold(D)$ with columns indexed by $Omega^((k+1))$.
+
++ *Solution Update:*
+  $
+    bold(x)^((k+1))_j = cases(
+      alpha_j^((k+1)) quad & "if" j in Omega^((k+1)),
+      0 quad & "otherwise"
+    )
+  $ <eq:omp_solution_update>
+
++ *Residual Update:* Compute the orthogonal residual:
+  $
+    bold(r)^((k+1)) = bold(y) - bold(D)_Omega bold(alpha)_Omega^((k+1))
+  $ <eq:omp_residual_update>
+
++ *Stopping Criteria:* Terminate if:
+  - $|Omega^((k+1))| >= k_"max"$ (maximum sparsity reached)
+  - $norm(bold(r)^((k+1)))_2 <= epsilon$ (residual threshold met)
+
+  Otherwise, set $k arrow.l k+1$ and return to step 2.
 
 #pagebreak()
 
