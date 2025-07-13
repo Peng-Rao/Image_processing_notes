@@ -25,6 +25,9 @@
   background-color: "#DDEEDD",
 )
 #let definition = thmbox("definition", "Definition", inset: (x: 0em, top: 0em))
+#let proposition = thmbox("proposition", "Proposition", inset: (x: 0em, top: 0em))
+#let theorem = thmbox("theorem", "Theorem", inset: (x: 0em, top: 0em))
+#let lemma = thmbox("lemma", "Lemma", inset: (x: 0em, top: 0em))
 #set math.mat(delim: "[")
 #set math.vec(delim: "[")
 #set math.equation(supplement: [Eq.])
@@ -856,6 +859,140 @@ Natural images exhibit strong local correlations but varying global statistics. 
 
 + *Aggregation:* Reconstruct the full image by averaging overlapping reconstructions at each pixel location.
 
+== Linearity Analysis of Sparse Coding Algorithms
+
+A fundamental question in sparse coding concerns the linearity properties of the resulting algorithms. An algorithm $cal(A)$ is considered linear if and only if it satisfies:
+
+#definition("Linear Algorithm")[
+  An algorithm $cal(A): RR^m -> RR^n$ is linear if and only if for all $alpha, beta in RR$ and $bold(y)_1, bold(y)_2 in RR^m$:
+  $
+    cal(A)(alpha bold(y)_1 + beta bold(y)_2) = alpha cal(A)(bold(y)_1) + beta cal(A)(bold(y)_2)
+  $
+] <def:linear_algorithm>
+
+#pagebreak()
+
+== Uniqueness Guarantees for Sparse Solutions
+The following theorem provides conditions under which the solution to the $ell_0$ constraint problem is unique.
+
+#theorem([Uniqueness of $ell_0$ Solutions])[
+  Consider the system $bold(D) bold(x) = bold(y)$ where $bold(D) in RR^{m times n}$. If there exists a solution $hat(bold(x))$ such that:
+  $
+    norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))
+  $
+  then $hat(bold(x))$ is the unique solution to the $ell_0$ constraint problem.
+
+  *Proof:*
+  Suppose, for the sake of contradiction, that there exists another solution $tilde(bold(x)) != hat(bold(x))$ such that $bold(D) tilde(bold(x)) = bold(y)$.
+
+  Since both $hat(bold(x))$ and $tilde(bold(x))$ satisfy the linear system:
+  $
+      bold(D) hat(bold(x)) & = bold(y) \
+    bold(D) tilde(bold(x)) & = bold(y)
+  $
+
+  Subtracting these equations yields:
+  $
+    bold(D)(hat(bold(x)) - tilde(bold(x))) = bold(0)
+  $
+
+  This shows that $hat(bold(x)) - tilde(bold(x))$ is a non-zero solution to the homogeneous system. By @lem:spark_homogeneous:
+  $
+    "spark"(bold(D)) <= norm(hat(bold(x)) - tilde(bold(x)))_0
+  $
+
+  Using the triangle inequality for the $ell_0$ pseudo-norm:
+  $
+    norm(hat(bold(x)) - tilde(bold(x)))_0 <= norm(hat(bold(x)))_0 + norm(tilde(bold(x)))_0
+  $
+
+  Combining these inequalities:
+  $
+    "spark"(bold(D)) <= norm(hat(bold(x)))_0 + norm(tilde(bold(x)))_0
+  $
+
+  Since $tilde(bold(x))$ is also assumed to be a solution to the $ell_0$ problem, and $hat(bold(x))$ is the optimal solution:
+  $
+    norm(tilde(bold(x)))_0 >= norm(hat(bold(x)))_0
+  $
+
+  Therefore:
+  $
+    "spark"(bold(D)) <= 2 norm(hat(bold(x)))_0
+  $
+
+  This contradicts our assumption that $norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))$. Hence, $hat(bold(x))$ is unique.
+] <thm:l0_uniqueness>
+
+#attention("Practical Limitations")[
+  While theoretically elegant, the uniqueness conditions are often too restrictive in practice:
+  - Computing $"spark"(bold(D))$ is computationally intractable for large matrices
+  - The bound $norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))$ is often very conservative
+  - Real-world signals may not satisfy the sparsity requirements
+]
+
+#pagebreak()
+
+== Application to Image Inpainting
+Image inpainting addresses the reconstruction of missing or corrupted pixels in digital images. Using sparse coding theory, we can formulate inpainting as a sparse reconstruction problem.
+
+Consider an image patch $bold(s)_0 in RR^n$ (vectorized) and its corrupted version $bold(s) in RR^n$ where some pixels are missing or corrupted. The relationship between them can be expressed as:
+$
+  bold(s) = bold(Omega) bold(s)_0
+$
+where $bold(Omega) in RR^{n times n}$ is a diagonal matrix with:
+$
+  Omega_(i i) = cases(
+    1 quad & "if pixel " i " is known",
+    0 quad & "if pixel " i " is missing"
+  )
+$
+
+Assuming the original patch admits a sparse representation:
+$
+  bold(s)_0 = bold(D) bold(x)_0
+$
+
+where $bold(D) in RR^(n times m)$ is an overcomplete dictionary and $bold(x)_0$ is sparse, the corrupted patch becomes:
+$
+  bold(s) = bold(Omega) bold(D) bold(x)_0 = bold(D)_Omega bold(x)_0
+$
+where $bold(D)_Omega = bold(Omega) bold(D)$ represents the "inpainted dictionary."
+
+The key insight is that the spark of the inpainted dictionary relates to the original dictionary:
+#proposition("Spark of Inpainted Dictionary")[
+  For the inpainted dictionary $bold(D)_Omega = bold(Omega) bold(D)$:
+  $
+    "spark"(bold(D)_Omega) >= "spark"(bold(D))
+  $
+] <prop:inpainted_spark>
+
+*Proof:*
+Removing rows (zeroing out pixels) from a matrix cannot decrease the spark, as linear dependencies between columns are preserved or potentially eliminated.
+
+Let $bold(s)_0$ be an image patch with sparse representation $bold(s)_0 = bold(D) bold(x)_0$ where $norm(bold(x)_0)_0 < 1/2 "spark"(bold(D)_Omega)$. Then:
++ The sparse coding problem $min_(bold(x)) norm(bold(x))_0$ subject to $bold(D)_Omega bold(x) = bold(s)$ has a unique solution $bold(x)_0$
++ The reconstruction $hat(bold(s))_0 = bold(D) bold(x)_0$ perfectly recovers the original patch
+
+*Proof:*
+The proof follows directly from @thm:l0_uniqueness applied to the inpainted dictionary $bold(D)_Omega$.
+
+*Sparse Coding Inpainting Algorithm*
+
+*Input:* Corrupted image patch $bold(s)$, dictionary $bold(D)$, mask $bold(Omega)$
+
++ *Construct inpainted dictionary:* $bold(D)_Omega = bold(Omega) bold(D)$
++ *Solve sparse coding:* $hat(bold(x)) = arg min_(bold(x)) norm(bold(x))_0$ subject to $bold(D)_Omega bold(x) = bold(s)$
++ *Reconstruct patch:* $hat(bold(s))_0 = bold(D) hat(bold(x))$
+
+*Output:* Inpainted patch $hat(bold(s))_0$
+
+In practice, step 2 is solved using OMP with the inpainted dictionary:
+$
+  hat(bold(x)) = "OMP"(bold(D)_Omega, bold(s), K)
+$
+
+where $K$ is a predetermined sparsity level. The key insight is that the synthesis step uses the original dictionary $bold(D)$, not the inpainted dictionary $bold(D)_Omega$.
 
 #pagebreak()
 
@@ -977,3 +1114,43 @@ Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
 - $norm(bold(alpha))_0 = 1$: Points on coordinate axes, e.g., $(7, 0, 0)$, $(0, 3, 0)$
 - $norm(bold(alpha))_0 = 2$: Points lying in coordinate planes, e.g., $(5, 2, 0)$
 - $norm(bold(alpha))_0 = 3$: All other points in $RR^3$
+
+#pagebreak()
+
+== Matrix Spark
+The concept of matrix spark provides the theoretical foundation for understanding when sparse solutions are unique.
+
+#definition("Matrix Spark")[
+  For a matrix $bold(D) in RR^(m times n)$, the spark of $bold(D)$, denoted $"spark"(bold(D))$, is defined as:
+  $
+    "spark"(bold(D)) = min{|cal(S)| : cal(S) subset.eq {1, 2, ..., n}, bold(D)_cal(S) "is linearly dependent"}
+  $
+  where $|cal(S)|$ denotes the cardinality of the set $cal(S)$ and $bold(D)_cal(S)$ represents the submatrix of $bold(D)$ formed by columns indexed by $cal(S)$.
+
+  Equivalently, the spark can be defined in terms of the $ell_0$ norm as:
+  $
+    "spark"(bold(D)) = min{norm(bold(x))_0 : bold(D) bold(x) = bold(0), bold(x) != bold(0)}
+  $
+] <def:spark>
+
+The spark and rank of a matrix are related but distinct concepts:
+
+#proposition("Spark-Rank Relationship")[
+  For any matrix $bold(D) in RR^(m times n)$ with $"rank"(bold(D)) = r$:
+  $
+    1 <= "spark"(bold(D)) <= r + 1
+  $
+] <prop:spark_rank>
+
+*Proof:*
+The lower bound follows from the definition. For the upper bound, consider that any $r+1$ columns must be linearly dependent in an $r$-dimensional space, hence $"spark"(bold(D)) <= r + 1$.
+
+#lemma("Spark and Homogeneous Solutions")[
+  If $bold(D) bold(x) = bold(0)$ has a solution $bold(x) != bold(0)$, then:
+  $
+    "spark"(bold(D)) <= norm(bold(x))_0
+  $
+] <lem:spark_homogeneous>
+
+*Proof:*
+If $bold(D) bold(x) = bold(0)$ with $bold(x) != bold(0)$, then $sum_(i in "supp"(bold(x))) x_i bold(d)_i = bold(0)$, showing that the columns ${bold(d)_i : i in "supp"(bold(x))}$ are linearly dependent. By definition of spark, $"spark"(bold(D)) <= |"supp"(bold(x))| = norm(bold(x))_0$.
