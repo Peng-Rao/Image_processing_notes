@@ -702,7 +702,7 @@ The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse c
 
   Equivalently (by maximizing correlation):
   $
-    j^* = arg max_(j=1,dots,n) angle.l bold(d)_j \, bold(r)^(k) angle.r bold(d)_j
+    j^* = arg max_(j=1,dots,n) angle.l bold(d)_j \, bold(r)^(k) angle.r
   $ <eq:mp_correlation>
 
 + *Coefficient Update:* Compute the projection coefficient:
@@ -824,6 +824,38 @@ The OMP algorithm embodies the greedy principle for sparse coding with orthogona
   - $norm(bold(r)^((k+1)))_2 <= epsilon$ (residual threshold met)
 
   Otherwise, set $k arrow.l k+1$ and return to step 2.
+
+#pagebreak()
+
+== OMP-Based Image Denoising
+The integration of OMP into image denoising frameworks requires careful consideration of patch processing, dictionary design, and aggregation strategies.
+
+Natural images exhibit strong local correlations but varying global statistics. The patch-based approach decomposes the image into overlapping patches, each processed independently:
+
+*Input:* Noisy image $bold(Y) in RR^(N times M)$, dictionary $bold(D) in RR^(n times m)$, sparsity level $s$ \
+*Output:* Denoised image $hat(bold(Y))$
+
++ *Patch Extraction:* For image $bold(Y) in RR^(N times M)$, extract patches $(bold(y)_i)_(i=1)^P$ where each $bold(y)_i in RR^n$ represents a vectorized $sqrt(n) times sqrt(n)$ patch.
+
++ *Mean Computation and Centering:* For each patch $bold(y)_i$:
+  $
+                mu_i & = 1/n sum_(j=1)^n y_(i,j)  \
+    tilde(bold(y))_i & = bold(y)_i - mu_i bold(1)
+  $
+  where $bold(1) in RR^n$ is the vector of all ones.
+
++ *Sparse Coding:* Apply OMP to each mean-centered patch:
+  $
+    hat(bold(alpha))_i = "OMP"(bold(D), tilde(bold(y))_i, s)
+  $
+
++ *Reconstruction:* Compute denoised patches by adding back the mean:
+  $
+    hat(bold(x))_i = bold(D) hat(bold(alpha))_i + mu_i bold(1)
+  $
+
++ *Aggregation:* Reconstruct the full image by averaging overlapping reconstructions at each pixel location.
+
 
 #pagebreak()
 
