@@ -1,0 +1,532 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Mathematical operators and notation
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\spark}{spark}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\argmin}{argmin}
+\DeclareMathOperator{\argmax}{argmax}
+\DeclareMathOperator{\OMP}{OMP}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\zeronorm}[1]{\left\|#1\right\|_0}
+\newcommand{\onenorm}[1]{\left\|#1\right\|_1}
+\newcommand{\twonorm}[1]{\left\|#1\right\|_2}
+\newcommand{\Real}{\mathbb{R}}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{algorithm}[theorem]{Algorithm}
+
+% Colored boxes for important results
+\newtcolorbox{important}{
+  colback=blue!10,
+  colframe=blue!40,
+  title=Important Result,
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{keytheorem}{
+  colback=red!10,
+  colframe=red!40,
+  title=Key Theorem,
+  fonttitle=\bfseries
+}
+
+\title{Sparse Coding Theory and Inpainting Applications: \\ Theoretical Foundations and Uniqueness Guarantees}
+\author{Lecture Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    These notes provide a comprehensive treatment of sparse coding theory with emphasis on theoretical guarantees for solution uniqueness. We examine the $\ell_0$ constraint problem, introduce the fundamental concept of matrix spark, and establish conditions under which sparse solutions are unique. The theoretical framework is applied to image inpainting, demonstrating how sparsity-based priors enable perfect reconstruction under specific conditions. The exposition includes detailed proofs, algorithmic considerations, and practical applications in computer vision.
+\end{abstract}
+
+\tableofcontents
+
+\newpage
+
+% NOTE: This section introduces the fundamental $\ell_0$ constraint problem and its computational challenges
+\section{The $\ell_0$ Constraint Problem and Sparse Coding Framework}
+
+\subsection{Problem Formulation}
+
+The sparse coding problem seeks to represent a signal $\vec{y} \in \Real^m$ as a linear combination of atoms from an overcomplete dictionary $\mathbf{D} \in \Real^{m \times n}$ (where $n > m$), using as few atoms as possible. This leads to the $\ell_0$ constraint optimization problem:
+
+\begin{align}
+    \label{eq:l0_problem}
+    \hat{\vec{x}} = \argmin_{\vec{x}} \zeronorm{\vec{x}} \quad \text{subject to} \quad \mathbf{D}\vec{x} = \vec{y}
+\end{align}
+
+where $\zeronorm{\vec{x}}$ denotes the $\ell_0$ pseudo-norm, counting the number of non-zero entries in $\vec{x}$.
+
+% NOTE: The $\ell_0$ "norm" is not actually a norm since it violates the homogeneity property
+\begin{remark}
+    The $\ell_0$ function is not a true norm since it violates the homogeneity property: $\zeronorm{\alpha \vec{x}} \neq |\alpha| \zeronorm{\vec{x}}$ for $\alpha \neq 0, 1$. However, it satisfies the triangle inequality: $\zeronorm{\vec{x} + \vec{y}} \leq \zeronorm{\vec{x}} + \zeronorm{\vec{y}}$.
+\end{remark}
+
+\subsection{Computational Complexity and Greedy Solutions}
+
+The optimization problem in equation \eqref{eq:l0_problem} is NP-hard in general, requiring exhaustive search over all possible subsets of dictionary atoms. For a dictionary with $n$ atoms, this involves evaluating $2^n$ possible combinations, making the problem computationally intractable for large dictionaries.
+
+\paragraph{Orthogonal Matching Pursuit (OMP)} provides a greedy approximation algorithm that iteratively selects dictionary atoms most correlated with the current residual:
+
+\begin{algorithm}[OMP Algorithm]
+    \label{alg:omp}
+    Given: Dictionary $\mathbf{D}$, signal $\vec{y}$, sparsity level $K$
+    \begin{enumerate}
+        \item Initialize: $\vec{r}_0 = \vec{y}$, $\mathcal{S}_0 = \emptyset$, $k = 0$
+        \item While $k < K$ and $\norm{\vec{r}_k}_2 > \epsilon$:
+              \begin{enumerate}
+                  \item Find atom: $j^* = \argmax_{j \notin \mathcal{S}_k} |\langle \vec{r}_k, \vec{d}_j \rangle|$
+                  \item Update support: $\mathcal{S}_{k+1} = \mathcal{S}_k \cup \{j^*\}$
+                  \item Solve least squares: $\vec{x}_{k+1} = \argmin_{\vec{x}} \norm{\vec{y} - \mathbf{D}_{\mathcal{S}_{k+1}}\vec{x}}_2^2$
+                  \item Update residual: $\vec{r}_{k+1} = \vec{y} - \mathbf{D}_{\mathcal{S}_{k+1}}\vec{x}_{k+1}$
+                  \item $k \leftarrow k + 1$
+              \end{enumerate}
+        \item Return $\vec{x}$ with support $\mathcal{S}_k$
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Linearity Analysis of Sparse Coding Algorithms}
+
+\subsubsection{Definition of Linear Algorithms}
+
+A fundamental question in sparse coding concerns the linearity properties of the resulting algorithms. An algorithm $\mathcal{A}$ is considered linear if and only if it satisfies:
+
+\begin{definition}[Linear Algorithm]
+    \label{def:linear_algorithm}
+    An algorithm $\mathcal{A}: \Real^m \to \Real^n$ is linear if and only if for all $\alpha, \beta \in \Real$ and $\vec{y}_1, \vec{y}_2 \in \Real^m$:
+    \begin{equation}
+        \mathcal{A}(\alpha \vec{y}_1 + \beta \vec{y}_2) = \alpha \mathcal{A}(\vec{y}_1) + \beta \mathcal{A}(\vec{y}_2)
+    \end{equation}
+\end{definition}
+
+\subsubsection{Nonlinearity of OMP}
+
+Despite the final solution taking the form of a linear projection:
+\begin{equation}
+    \hat{\vec{x}}_{\mathcal{S}} = (\mathbf{D}_{\mathcal{S}}^T \mathbf{D}_{\mathcal{S}})^{-1} \mathbf{D}_{\mathcal{S}}^T \vec{y}
+\end{equation}
+
+the OMP algorithm is fundamentally nonlinear due to the adaptive selection of the support set $\mathcal{S}$.
+
+\begin{proposition}[Nonlinearity of OMP]
+    \label{prop:omp_nonlinear}
+    The OMP algorithm is nonlinear because the support selection depends on the input signal: $\mathcal{S}(\vec{y})$ is a function of $\vec{y}$.
+\end{proposition}
+
+\begin{proof}
+    Consider two signals $\vec{y}_1$ and $\vec{y}_2$ that would result in different support sets under OMP. The support of $\vec{y}_1 + \vec{y}_2$ may differ from the union of individual supports, violating the linearity condition.
+\end{proof}
+
+% NOTE: This illustrates why adaptive algorithms can outperform fixed linear methods
+\paragraph{Comparison with Linear Denoising Methods}
+Fixed linear methods like convolution-based filtering or PCA projection onto the first $k$ principal components are linear but less adaptive. The nonlinearity of OMP enables signal-dependent subspace selection, providing superior performance for sparse signals.
+
+\newpage
+
+% NOTE: This section introduces the crucial concept of matrix spark and its role in uniqueness guarantees
+\section{Matrix Spark and Theoretical Guarantees}
+
+\subsection{Definition and Properties of Matrix Spark}
+
+The concept of matrix spark provides the theoretical foundation for understanding when sparse solutions are unique.
+
+\begin{definition}[Matrix Spark]
+    \label{def:spark}
+    For a matrix $\mathbf{D} \in \Real^{m \times n}$, the spark of $\mathbf{D}$, denoted $\spark(\mathbf{D})$, is defined as:
+    \begin{equation}
+        \spark(\mathbf{D}) = \min\{|\mathcal{S}| : \mathcal{S} \subseteq \{1, 2, \ldots, n\}, \mathbf{D}_{\mathcal{S}} \text{ is linearly dependent}\}
+    \end{equation}
+    where $|\mathcal{S}|$ denotes the cardinality of the set $\mathcal{S}$ and $\mathbf{D}_{\mathcal{S}}$ represents the submatrix of $\mathbf{D}$ formed by columns indexed by $\mathcal{S}$.
+\end{definition}
+
+\subsubsection{Relationship Between Spark and Rank}
+
+The spark and rank of a matrix are related but distinct concepts:
+
+\begin{proposition}[Spark-Rank Relationship]
+    \label{prop:spark_rank}
+    For any matrix $\mathbf{D} \in \Real^{m \times n}$ with $\rank(\mathbf{D}) = r$:
+    \begin{equation}
+        1 \leq \spark(\mathbf{D}) \leq r + 1
+    \end{equation}
+\end{proposition}
+
+\begin{proof}
+    The lower bound follows from the definition. For the upper bound, consider that any $r+1$ columns must be linearly dependent in an $r$-dimensional space, hence $\spark(\mathbf{D}) \leq r + 1$.
+\end{proof}
+
+\subsubsection{Computational Complexity of Spark}
+
+Computing the spark of a matrix is computationally challenging:
+
+\begin{remark}[Computational Complexity]
+    Determining $\spark(\mathbf{D})$ requires testing all possible subsets of columns, leading to $\mathcal{O}(2^n)$ complexity in the worst case. This makes spark computation infeasible for large matrices.
+\end{remark}
+
+\begin{example}[Simple Spark Calculation]
+    \label{ex:spark_example}
+    Consider the matrix:
+    \begin{equation}
+        \mathbf{D} = \begin{pmatrix}
+            1 & 0 & 0 & 1 \\
+            0 & 1 & 0 & 1 \\
+            0 & 0 & 1 & 1
+        \end{pmatrix}
+    \end{equation}
+
+    The rank is $\rank(\mathbf{D}) = 3$. To find the spark:
+    \begin{itemize}
+        \item No single column is zero, so $\spark(\mathbf{D}) > 1$
+        \item No two columns are parallel, so $\spark(\mathbf{D}) > 2$
+        \item The combination $\vec{d}_1 + \vec{d}_2 + \vec{d}_3 - \vec{d}_4 = \vec{0}$ shows linear dependence
+    \end{itemize}
+    Therefore, $\spark(\mathbf{D}) = 4$.
+\end{example}
+
+\subsection{Relationship Between Spark and Homogeneous Systems}
+
+The spark is intimately connected to the sparsity of solutions to homogeneous systems.
+
+\begin{lemma}[Spark and Homogeneous Solutions]
+    \label{lem:spark_homogeneous}
+    If $\mathbf{D}\vec{x} = \vec{0}$ has a solution $\vec{x} \neq \vec{0}$, then:
+    \begin{equation}
+        \spark(\mathbf{D}) \leq \zeronorm{\vec{x}}
+    \end{equation}
+\end{lemma}
+
+\begin{proof}
+    If $\mathbf{D}\vec{x} = \vec{0}$ with $\vec{x} \neq \vec{0}$, then $\sum_{i \in \supp(\vec{x})} x_i \vec{d}_i = \vec{0}$, showing that the columns $\{\vec{d}_i : i \in \supp(\vec{x})\}$ are linearly dependent. By definition of spark, $\spark(\mathbf{D}) \leq |\supp(\vec{x})| = \zeronorm{\vec{x}}$.
+\end{proof}
+
+\newpage
+
+% NOTE: This section presents the main theoretical result guaranteeing uniqueness
+\section{Uniqueness Guarantees for Sparse Solutions}
+
+\subsection{Main Uniqueness Theorem}
+
+The following theorem provides conditions under which the solution to the $\ell_0$ constraint problem is unique.
+
+\begin{keytheorem}
+    \begin{theorem}[Uniqueness of $\ell_0$ Solutions]
+        \label{thm:l0_uniqueness}
+        Consider the system $\mathbf{D}\vec{x} = \vec{y}$ where $\mathbf{D} \in \Real^{m \times n}$. If there exists a solution $\hat{\vec{x}}$ such that:
+        \begin{equation}
+            \zeronorm{\hat{\vec{x}}} < \frac{1}{2}\spark(\mathbf{D})
+        \end{equation}
+        then $\hat{\vec{x}}$ is the unique solution to the $\ell_0$ constraint problem \eqref{eq:l0_problem}.
+    \end{theorem}
+\end{keytheorem}
+
+\begin{proof}
+    Suppose, for the sake of contradiction, that there exists another solution $\tilde{\vec{x}} \neq \hat{\vec{x}}$ such that $\mathbf{D}\tilde{\vec{x}} = \vec{y}$.
+
+    Since both $\hat{\vec{x}}$ and $\tilde{\vec{x}}$ satisfy the linear system:
+    \begin{align}
+        \mathbf{D}\hat{\vec{x}}   & = \vec{y} \\
+        \mathbf{D}\tilde{\vec{x}} & = \vec{y}
+    \end{align}
+
+    Subtracting these equations yields:
+    \begin{equation}
+        \mathbf{D}(\hat{\vec{x}} - \tilde{\vec{x}}) = \vec{0}
+    \end{equation}
+
+    This shows that $\hat{\vec{x}} - \tilde{\vec{x}}$ is a non-zero solution to the homogeneous system. By Lemma \ref{lem:spark_homogeneous}:
+    \begin{equation}
+        \spark(\mathbf{D}) \leq \zeronorm{\hat{\vec{x}} - \tilde{\vec{x}}}
+    \end{equation}
+
+    % NOTE: This step uses the triangle inequality property of the $\ell_0$ pseudo-norm
+    Using the triangle inequality for the $\ell_0$ pseudo-norm:
+    \begin{equation}
+        \zeronorm{\hat{\vec{x}} - \tilde{\vec{x}}} \leq \zeronorm{\hat{\vec{x}}} + \zeronorm{\tilde{\vec{x}}}
+    \end{equation}
+
+    Combining these inequalities:
+    \begin{equation}
+        \spark(\mathbf{D}) \leq \zeronorm{\hat{\vec{x}}} + \zeronorm{\tilde{\vec{x}}}
+    \end{equation}
+
+    Since $\tilde{\vec{x}}$ is also assumed to be a solution to the $\ell_0$ problem, and $\hat{\vec{x}}$ is the optimal solution:
+    \begin{equation}
+        \zeronorm{\tilde{\vec{x}}} \geq \zeronorm{\hat{\vec{x}}}
+    \end{equation}
+
+    Therefore:
+    \begin{equation}
+        \spark(\mathbf{D}) \leq 2\zeronorm{\hat{\vec{x}}}
+    \end{equation}
+
+    This contradicts our assumption that $\zeronorm{\hat{\vec{x}}} < \frac{1}{2}\spark(\mathbf{D})$. Hence, $\hat{\vec{x}}$ is unique.
+\end{proof}
+
+\subsection{Implications and Limitations}
+
+\subsubsection{Practical Significance}
+
+\begin{important}
+    The uniqueness theorem provides a theoretical guarantee that sparse solutions, when they exist and are sufficiently sparse, are unique. This justifies the use of greedy algorithms like OMP, as they will recover the correct solution under these conditions.
+\end{important}
+
+\subsubsection{Limitations in Practice}
+
+\begin{remark}[Practical Limitations]
+    While theoretically elegant, the uniqueness conditions are often too restrictive in practice:
+    \begin{itemize}
+        \item Computing $\spark(\mathbf{D})$ is computationally intractable for large matrices
+        \item The bound $\zeronorm{\hat{\vec{x}}} < \frac{1}{2}\spark(\mathbf{D})$ is often very conservative
+        \item Real-world signals may not satisfy the sparsity requirements
+    \end{itemize}
+\end{remark}
+
+\newpage
+
+% NOTE: This section demonstrates the practical application of the theoretical results
+\section{Application to Image Inpainting}
+
+\subsection{Inpainting Problem Formulation}
+
+Image inpainting addresses the reconstruction of missing or corrupted pixels in digital images. Using sparse coding theory, we can formulate inpainting as a sparse reconstruction problem.
+
+\subsubsection{Mathematical Setup}
+
+Consider an image patch $\vec{s}_0 \in \Real^{n}$ (vectorized) and its corrupted version $\vec{s} \in \Real^{n}$ where some pixels are missing or corrupted. The relationship between them can be expressed as:
+
+\begin{equation}
+    \vec{s} = \mathbf{\Omega} \vec{s}_0
+\end{equation}
+
+where $\mathbf{\Omega} \in \Real^{n \times n}$ is a diagonal matrix with:
+\begin{equation}
+    \Omega_{ii} = \begin{cases}
+        1 & \text{if pixel } i \text{ is known}   \\
+        0 & \text{if pixel } i \text{ is missing}
+    \end{cases}
+\end{equation}
+
+\subsubsection{Sparse Representation Framework}
+
+Assuming the original patch admits a sparse representation:
+\begin{equation}
+    \vec{s}_0 = \mathbf{D}\vec{x}_0
+\end{equation}
+
+where $\mathbf{D} \in \Real^{n \times m}$ is an overcomplete dictionary and $\vec{x}_0$ is sparse, the corrupted patch becomes:
+\begin{equation}
+    \vec{s} = \mathbf{\Omega} \mathbf{D} \vec{x}_0 = \mathbf{D}_{\Omega} \vec{x}_0
+\end{equation}
+
+where $\mathbf{D}_{\Omega} = \mathbf{\Omega} \mathbf{D}$ represents the "inpainted dictionary."
+
+\subsection{Theoretical Guarantees for Inpainting}
+
+\subsubsection{Spark Relationship}
+
+The key insight is that the spark of the inpainted dictionary relates to the original dictionary:
+
+\begin{proposition}[Spark of Inpainted Dictionary]
+    \label{prop:inpainted_spark}
+    For the inpainted dictionary $\mathbf{D}_{\Omega} = \mathbf{\Omega} \mathbf{D}$:
+    \begin{equation}
+        \spark(\mathbf{D}_{\Omega}) \geq \spark(\mathbf{D})
+    \end{equation}
+\end{proposition}
+
+\begin{proof}
+    Removing rows (zeroing out pixels) from a matrix cannot decrease the spark, as linear dependencies between columns are preserved or potentially eliminated.
+\end{proof}
+
+\subsubsection{Perfect Reconstruction Theorem}
+
+\begin{theorem}[Perfect Inpainting Reconstruction]
+    \label{thm:perfect_inpainting}
+    Let $\vec{s}_0$ be an image patch with sparse representation $\vec{s}_0 = \mathbf{D}\vec{x}_0$ where $\zeronorm{\vec{x}_0} < \frac{1}{2}\spark(\mathbf{D}_{\Omega})$. Then:
+    \begin{enumerate}
+        \item The sparse coding problem $\min_{\vec{x}} \zeronorm{\vec{x}}$ subject to $\mathbf{D}_{\Omega}\vec{x} = \vec{s}$ has a unique solution $\vec{x}_0$
+        \item The reconstruction $\hat{\vec{s}}_0 = \mathbf{D}\vec{x}_0$ perfectly recovers the original patch
+    \end{enumerate}
+\end{theorem}
+
+\begin{proof}
+    The proof follows directly from Theorem \ref{thm:l0_uniqueness} applied to the inpainted dictionary $\mathbf{D}_{\Omega}$.
+\end{proof}
+
+\subsection{Inpainting Algorithm}
+
+\begin{algorithm}[Sparse Coding Inpainting]
+    \label{alg:inpainting}
+    \textbf{Input:} Corrupted image patch $\vec{s}$, dictionary $\mathbf{D}$, mask $\mathbf{\Omega}$
+    \begin{enumerate}
+        \item \textbf{Construct inpainted dictionary:} $\mathbf{D}_{\Omega} = \mathbf{\Omega} \mathbf{D}$
+        \item \textbf{Solve sparse coding:} $\hat{\vec{x}} = \argmin_{\vec{x}} \zeronorm{\vec{x}}$ subject to $\mathbf{D}_{\Omega}\vec{x} = \vec{s}$
+        \item \textbf{Reconstruct patch:} $\hat{\vec{s}}_0 = \mathbf{D}\hat{\vec{x}}$
+    \end{enumerate}
+    \textbf{Output:} Inpainted patch $\hat{\vec{s}}_0$
+\end{algorithm}
+
+\subsubsection{Practical Implementation}
+
+In practice, step 2 is solved using OMP with the inpainted dictionary:
+\begin{equation}
+    \hat{\vec{x}} = \OMP(\mathbf{D}_{\Omega}, \vec{s}, K)
+\end{equation}
+
+where $K$ is a predetermined sparsity level. The key insight is that the synthesis step uses the original dictionary $\mathbf{D}$, not the inpainted dictionary $\mathbf{D}_{\Omega}$.
+
+\subsection{Limitations and Extensions}
+
+\subsubsection{Noise Considerations}
+
+In the presence of noise, the inpainting problem becomes:
+\begin{equation}
+    \vec{s} = \mathbf{\Omega} \mathbf{D} \vec{x}_0 + \vec{n}
+\end{equation}
+
+where $\vec{n}$ represents additive noise. The algorithm must be modified to handle this case through regularization or by using noise-aware variants of OMP.
+
+\subsubsection{Comparison with Modern Approaches}
+
+% NOTE: This places the classical approach in context with contemporary methods
+\begin{remark}[Modern Context]
+    While the sparse coding approach to inpainting provides theoretical guarantees, modern deep learning methods often achieve superior practical results. However, the sparse coding framework remains valuable for:
+    \begin{itemize}
+        \item Applications requiring theoretical guarantees
+        \item Scenarios with limited training data
+        \item Real-time processing requirements
+        \item Interpretable reconstruction algorithms
+    \end{itemize}
+\end{remark}
+
+\newpage
+
+% NOTE: This section summarizes the key concepts and provides further reading
+\section{Summary and Further Directions}
+
+\subsection{Key Theoretical Contributions}
+
+This exposition has established several fundamental results in sparse coding theory:
+
+\begin{itemize}
+    \item \textbf{Uniqueness conditions:} Solutions to the $\ell_0$ constraint problem are unique when sufficiently sparse relative to the matrix spark
+    \item \textbf{Nonlinearity of adaptive algorithms:} Despite involving linear projections, OMP and related algorithms are nonlinear due to adaptive support selection
+    \item \textbf{Perfect reconstruction guarantees:} Under specific conditions, sparse coding can achieve perfect reconstruction in inpainting applications
+\end{itemize}
+
+\subsection{Mathematical Insights}
+
+The theoretical framework reveals several mathematical insights:
+
+\begin{important}
+    The spark of a matrix provides a fundamental limit on the guaranteed recovery of sparse solutions. While computationally challenging to determine, it offers theoretical grounding for sparse coding algorithms.
+\end{important}
+
+\subsection{Practical Implications}
+
+From an algorithmic perspective, the results suggest:
+
+\begin{enumerate}
+    \item Sparse coding algorithms can be trusted to find unique solutions under appropriate conditions
+    \item The choice of dictionary significantly impacts the theoretical guarantees through its spark
+    \item Inpainting applications benefit from the theoretical framework, especially for reconstruction tasks
+\end{enumerate}
+
+\subsection{Future Research Directions}
+
+Several avenues for future work emerge from this theoretical foundation:
+
+\begin{itemize}
+    \item \textbf{Computational methods:} Developing efficient algorithms for spark computation or approximation
+    \item \textbf{Relaxed conditions:} Finding less restrictive conditions for uniqueness guarantees
+    \item \textbf{Dictionary design:} Constructing dictionaries with favorable spark properties
+    \item \textbf{Extensions to noisy cases:} Theoretical analysis of sparse coding in the presence of noise
+\end{itemize}
+
+\newpage
+
+\section{Mathematical Glossary}
+
+\begin{description}
+    \item[$\ell_0$ pseudo-norm] $\zeronorm{\vec{x}}$ - counts the number of non-zero entries in vector $\vec{x}$
+    \item[Spark] $\spark(\mathbf{D})$ - minimum number of linearly dependent columns in matrix $\mathbf{D}$
+    \item[Support] $\supp(\vec{x}) = \{i : x_i \neq 0\}$ - set of indices of non-zero entries
+    \item[Overcomplete dictionary] Matrix $\mathbf{D} \in \Real^{m \times n}$ with $n > m$
+    \item[Inpainted dictionary] $\mathbf{D}_{\Omega} = \mathbf{\Omega}\mathbf{D}$ where $\mathbf{\Omega}$ is a mask matrix
+    \item[Homogeneous system] Linear system $\mathbf{D}\vec{x} = \vec{0}$
+    \item[Active set] $\mathcal{S}$ - subset of dictionary indices used in sparse representation
+\end{description}
+
+\section{Appendix: Extended Proofs}
+
+\subsection{Proof of Triangle Inequality for $\ell_0$ Pseudo-norm}
+
+\begin{proof}
+    For any vectors $\vec{x}, \vec{y} \in \Real^n$, we need to show $\zeronorm{\vec{x} + \vec{y}} \leq \zeronorm{\vec{x}} + \zeronorm{\vec{y}}$.
+
+    Let $\mathcal{S}_x = \supp(\vec{x})$ and $\mathcal{S}_y = \supp(\vec{y})$. Then:
+    \begin{align}
+        \supp(\vec{x} + \vec{y})     & \subseteq \mathcal{S}_x \cup \mathcal{S}_y \\
+        \zeronorm{\vec{x} + \vec{y}} & = |\supp(\vec{x} + \vec{y})|               \\
+                                     & \leq |\mathcal{S}_x \cup \mathcal{S}_y|    \\
+                                     & \leq |\mathcal{S}_x| + |\mathcal{S}_y|     \\
+                                     & = \zeronorm{\vec{x}} + \zeronorm{\vec{y}}
+    \end{align}
+
+    The inequality in the third line follows from the subadditivity of cardinality for finite sets.
+\end{proof}
+
+\subsection{Computational Complexity Analysis}
+
+The computational complexity of various operations in sparse coding:
+
+\begin{itemize}
+    \item \textbf{Spark computation:} $\mathcal{O}(2^n)$ - exponential in dictionary size
+    \item \textbf{OMP algorithm:} $\mathcal{O}(Kmn)$ - polynomial in dictionary dimensions and sparsity
+    \item \textbf{Least squares projection:} $\mathcal{O}(K^3 + K^2m)$ - cubic in sparsity level
+\end{itemize}
+
+This complexity analysis explains why greedy algorithms like OMP are preferred over exact $\ell_0$ optimization in practice.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+    \bibitem{tropp2007signal}
+    J. A. Tropp and A. C. Gilbert, ``Signal recovery from random measurements via orthogonal matching pursuit,'' IEEE Transactions on Information Theory, vol. 53, no. 12, pp. 4655-4666, 2007.
+
+    \bibitem{donoho2006compressed}
+    D. L. Donoho, ``Compressed sensing,'' IEEE Transactions on Information Theory, vol. 52, no. 4, pp. 1289-1306, 2006.
+
+    \bibitem{elad2010sparse}
+    M. Elad, Sparse and Redundant Representations: From Theory to Applications in Signal and Image Processing. Springer, 2010.
+
+    \bibitem{aharon2006svd}
+    M. Aharon, M. Elad, and A. Bruckstein, ``K-SVD: An algorithm for designing overcomplete dictionaries for sparse representation,'' IEEE Transactions on Signal Processing, vol. 54, no. 11, pp. 4311-4322, 2006.
+
+\end{thebibliography}
+
+\end{document}

@@ -1,6 +1,8 @@
 #import "@local/simple-note:0.0.1": *
 #import "@preview/cetz:0.3.4": canvas, draw
 #import "@preview/cetz-plot:0.1.1": chart, plot
+#import "@preview/ctheorems:1.1.3": *
+#show: thmrules
 
 #show: zebraw
 #show: simple-note.with(
@@ -22,7 +24,7 @@
   // cover-image: "./figures/polimi_logo.png",
   background-color: "#DDEEDD",
 )
-
+#let definition = thmbox("definition", "Definition", inset: (x: 0em, top: 0em))
 #set math.mat(delim: "[")
 #set math.vec(delim: "[")
 #set math.equation(supplement: [Eq.])
@@ -30,7 +32,7 @@
 #let nonum(eq) = math.equation(block: true, numbering: none, eq)
 #let firebrick(body) = text(fill: rgb("#b22222"), body)
 
-= Sparsity and Parsimony
+= Introduction to Sparsity
 The principle of sparsity or "parsimony" consists in representing some phenomenon with as few variable as possible. Stretch back to philosopher William Ockham in the 14th century, Wrinch and Jeffreys relate simplicity to parsimony:
 
 The *existence of simple laws* is, then, apparently, to be regarded as *a quality of nature*; and accordingly we may infer that it is justifiable to *prefer a simple law to a more complex one that fits our observations slightly better*.
@@ -48,9 +50,6 @@ Signals are approximated by sparse linear combinations of *prototypes*(basis ele
   caption: "Enforce sparsity in signal processing",
 )
 
-#pagebreak()
-
-= Signal Processing
 == Discrete Cosine Transform (DCT)
 === 1D DCT
 Generate the DCT basis according to the following formula, the $k$-th atom of the DCT basis in dimension $M$ is defined as:
@@ -535,41 +534,13 @@ The $ell_0$ minimization problem is NP-hard in general, making it computationall
 
 #pagebreak()
 
-= Sparse Coding in $ell_0$ sense
-== The $ell_0$ Norm
-The $ell_0$ norm (more precisely, $ell_0$ pseudo-norm) of a vector $bold(x) in RR^n$ is defined as:
-$
-  norm(bold(x))_0 := |{i : x_i != 0}| = sum_{i=1}^n bold(1)_{x_i != 0}
-$
-where $bold(1)_{x_i != 0}$ is the indicator function that equals 1 if $x_i != 0$ and 0 otherwise.
-
-The $ell_0$ norm can be understood as the limit of $ell_p$ norms as $p -> 0^+$:
-$
-  norm(bold(x))_0 = lim_{p -> 0^+} norm(bold(x))_p^p = lim_{p -> 0^+} (sum_{i=1}^n |x_i|^p)
-$
-
-
-The $ell_0$ norm satisfies the following properties:
-+ *Non-negativity*: $norm(bold(x))_0 >= 0$ for all $bold(x) in RR^n$
-+ *Zero property*: $norm(bold(x))_0 = 0$ if and only if $bold(x) = bold(0)$
-+ *Triangle inequality*: $norm(bold(x) + bold(y))_0 <= norm(bold(x))_0 + norm(bold(y))_0$
-+ *Failure of homogeneity*: $norm(lambda bold(x))_0 != |lambda| norm(bold(x))_0$ for $lambda != 0, plus.minus 1$
-
-
-Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
-- $norm(bold(alpha))_0 = 0$: Only the origin $(0, 0, 0)$
-- $norm(bold(alpha))_0 = 1$: Points on coordinate axes, e.g., $(7, 0, 0)$, $(0, 3, 0)$
-- $norm(bold(alpha))_0 = 2$: Points lying in coordinate planes, e.g., $(5, 2, 0)$
-- $norm(bold(alpha))_0 = 3$: All other points in $RR^3$
-
-
-
+= Sparse Coding
 == The Sparse Coding Problem
 Given the desire for sparse representations, a natural formulation is to seek the sparsest possible $bold(alpha)$ such that:
 $
   bold(x) = D bold(alpha)
 $
-This leads to the following optimization problem.
+This leads to the following optimization problem:
 $
   min_(bold(alpha) in RR^n) norm(bold(alpha))_0 quad "subject to" quad bold(x) = D bold(alpha)
 $ <eq:p0_problem>
@@ -584,7 +555,6 @@ This is often referred to as the *$P_0$ problem*.
 *Challenge:* The $ell_0$ norm is non-convex, discontinuous, and leads to combinatorial complexity. Solving @eq:p0_problem exactly is NP-hard in general.
 
 === Union of Subspaces Interpretation
-
 Let us assume $D in RR^(m times n)$ is a dictionary with $n > m$, i.e., an overcomplete dictionary.
 
 Suppose we restrict $bold(alpha)$ to have at most $s$ non-zero entries. Then the image $D bold(alpha)$ lies in a subspace spanned by $s$ columns of $D$.
@@ -657,7 +627,6 @@ Let $bold(x) in RR^2$ be a signal we wish to approximate. If we restrict $norm(b
 If $norm(bold(alpha))_0 <= s$, the approximation lives in a union of $binom(n, s)$ subspaces.
 
 === Combinatorial Intractability
-
 *Why is $P_0$ hard?* To find the optimal $s$-sparse representation of $bold(x)$, one must:
 + Enumerate all subsets $omega subset {1, dots, n}$ of size $s$
 + Solve the least squares problem:
@@ -707,9 +676,9 @@ A *greedy algorithm* for sparse coding makes locally optimal choices at each ite
 
 #pagebreak()
 
-=== Matching Pursuit Algorithm
+== Matching Pursuit Algorithm
 The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse coding:
-*Input:* Signal $bold(y)$, dictionary $bold(D)$, stopping criterion \
+*Input:* Signal $bold(y)$, dictionary $bold(D)$ (normalized), stopping criterion \
 *Output:* Sparse representation $bold(x)$
 
 + *Initialize:*
@@ -732,12 +701,12 @@ The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse c
 
   Equivalently (by maximizing correlation):
   $
-    j^* = arg max_(j=1,dots,n) (|(bold(r)^((k)))^T bold(d)_j|^2)/(norm(bold(d)_j)_2^2)
+    j^* = arg max_(j=1,dots,n) angle.l bold(d)_j \, bold(r)^(k) angle.r bold(d)_j
   $ <eq:mp_correlation>
 
 + *Coefficient Update:* Compute the projection coefficient:
   $
-    z_(j^*)^((k)) = (bold(r)^((k)))^T bold(d)_(j^*) / norm(bold(d)_(j^*))_2^2
+    z_(j^*)^((k)) = angle.l bold(d)_(j^*) \, bold(r)^(k) angle.r
   $ <eq:mp_coefficient>
 
 + *Solution Update:*
@@ -764,7 +733,6 @@ The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse c
 
 #pagebreak()
 
-== Properties of Matching Pursuit
 === Residual Monotonicity
 The Matching Pursuit algorithm produces a monotonically decreasing sequence of residual norms:
 $
@@ -805,6 +773,36 @@ For $k$ iterations, the total complexity is $cal(O)(k m n)$, which is polynomial
 #pagebreak()
 
 = Dictionary Learning
+== Introduction to Dictionary Learning
+Dictionary learning represents a fundamental paradigm in signal processing and machine learning, where the objective is to discover optimal sparse representations of data. Unlike traditional approaches that rely on pre-constructed bases such as the Discrete Cosine Transform (DCT) or Principal Component Analysis (PCA), dictionary learning adapts the representation to the specific characteristics of the training data.
+
+The concept of dictionary learning emerged from the intersection of sparse coding theory and matrix factorization techniques. While classical orthogonal transforms like DCT and PCA provide optimal representations for specific signal classes, they often fail to capture the intrinsic structure of complex, real-world data.
+
+#definition("Dictionary Learning Problem")[
+  Given a set of training signals $bold(y)_1, bold(y)_2, ..., bold(y)_N in RR^n$, the dictionary learning problem seeks to find:
+  + A dictionary matrix $bold(D) in RR^{n times m}$ with $m > n$ (redundant dictionary)
+  + Sparse coefficient vectors $bold(x)_1, bold(x)_2, ..., bold(x)_N in RR^m$
+
+  such that $bold(y)_i approx bold(D) bold(x)_i$ for all $i = 1, 2, ..., N$, where each $bold(x)_i$ has at most $T_0$ non-zero entries.
+]
+
+== Problem Formulation
+Let $bold(Y) = [bold(y)_1, bold(y)_2, ..., bold(y)_N] in RR^(n times N)$ denote the training matrix, where each column represents a training signal. Similarly, let $bold(X) = [bold(x)_1, bold(x)_2, ..., bold(x)_N] in RR^(m times N)$ represent the sparse coefficient matrix.
+
+The dictionary learning problem can be formulated as the following optimization:
+
+$
+  min_(bold(D), bold(X)) norm(bold(Y) - bold(D) bold(X))_F^2
+  quad "subject to" quad norm(bold(x)_i)_0 <= T_0, quad forall i = 1, 2, ..., N
+$
+
+where $norm(dot)_F$ denotes the Frobenius norm and $norm(dot)_0$ is the $ell_0$ pseudo-norm counting non-zero entries.
+
+
+*(Normalization Constraint:)*. To resolve scaling ambiguities, we impose the constraint that each column of $bold(D)$ has unit $ell_2$ norm:
+$
+  norm(bold(d)_j)_2 = 1, quad forall j = 1, 2, ..., m
+$
 
 
 #pagebreak()
@@ -866,3 +864,29 @@ The power of orthonormal bases lies in their computational convenience. For any 
 $ bold(x) = bold(D)^T bold(s) $
 
 where $bold(x) = (x_1, x_2, ..., x_n)^T$ and $x_i = angle.l bold(e)_i, bold(s) angle.r$.
+
+== The $ell_0$ Norm
+The $ell_0$ norm (more precisely, $ell_0$ pseudo-norm) of a vector $bold(x) in RR^n$ is defined as:
+$
+  norm(bold(x))_0 := |{i : x_i != 0}| = sum_(i=1)^n bold(1)_(x_i != 0)
+$
+where $bold(1)_{x_i != 0}$ is the indicator function that equals 1 if $x_i != 0$ and 0 otherwise.
+
+The $ell_0$ norm can be understood as the limit of $ell_p$ norms as $p -> 0^+$:
+$
+  norm(bold(x))_0 = lim_(p -> 0^+) norm(bold(x))_p^p = lim_(p -> 0^+) (sum_(i=1)^n |x_i|^p)
+$
+
+
+The $ell_0$ norm satisfies the following properties:
++ *Non-negativity*: $norm(bold(x))_0 >= 0$ for all $bold(x) in RR^n$
++ *Zero property*: $norm(bold(x))_0 = 0$ if and only if $bold(x) = bold(0)$
++ *Triangle inequality*: $norm(bold(x) + bold(y))_0 <= norm(bold(x))_0 + norm(bold(y))_0$
++ *Failure of homogeneity*: $norm(lambda bold(x))_0 != |lambda| norm(bold(x))_0$ for $lambda != 0, plus.minus 1$
+
+
+Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
+- $norm(bold(alpha))_0 = 0$: Only the origin $(0, 0, 0)$
+- $norm(bold(alpha))_0 = 1$: Points on coordinate axes, e.g., $(7, 0, 0)$, $(0, 3, 0)$
+- $norm(bold(alpha))_0 = 2$: Points lying in coordinate planes, e.g., $(5, 2, 0)$
+- $norm(bold(alpha))_0 = 3$: All other points in $RR^3$
