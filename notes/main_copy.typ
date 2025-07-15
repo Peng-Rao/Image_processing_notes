@@ -1,0 +1,992 @@
+#import "@local/simple-note:0.0.1": attention, example, simple-note, zebraw
+#import "@preview/cetz:0.3.4": canvas, draw
+#import "@preview/cetz-plot:0.1.1": chart, plot
+#import "@preview/ctheorems:1.1.3": *
+#show: thmrules
+#show: zebraw
+#show: simple-note.with(
+  title: [ Image Processing ],
+  date: datetime(year: 2025, month: 2, day: 17),
+  authors: (
+    (
+      name: "Rao",
+      github: "https://github.com/Peng-Rao",
+      homepage: "https://github.com/Peng-Rao",
+    ),
+  ),
+  affiliations: (
+    (
+      id: "1",
+      name: "Politecnico di Milano",
+    ),
+  ),
+  // cover-image: "./figures/polimi_logo.png",
+  background-color: "#DDEEDD",
+)
+#let definition = thmbox("definition", "Definition", inset: (x: 0em, top: 0em))
+#let proposition = thmbox("proposition", "Proposition", inset: (x: 0em, top: 0em))
+#let theorem = thmbox("theorem", "Theorem", inset: (x: 0em, top: 0em))
+#let lemma = thmbox("lemma", "Lemma", inset: (x: 0em, top: 0em))
+#set math.mat(delim: "[")
+#set math.vec(delim: "[")
+#set math.equation(supplement: [Eq.])
+
+#let nonum(eq) = math.equation(block: true, numbering: none, eq)
+#let firebrick(body) = text(fill: rgb("#b22222"), body)
+
+= Limitations of Sparsity-Based Denoising
+== The Sparsity Problem
+While orthonormal bases provide computational convenience and guarantee unique representations, they suffer from a fundamental limitation: _no single orthonormal basis can provide sparse representations for all signals of interest_.
+
+#example("DCT Basis Limitation")[
+  Consider a signal $bold(s)_0 in RR^n$ that admits a sparse representation with respect to the Discrete Cosine Transform (DCT) basis $bold(D)_"DCT"$:
+
+  $ bold(s_0) = bold(D)_"DCT" bold(x_0) $
+
+  where $bold(x_0)$ is sparse (most entries are zero).
+
+  Now consider the modified signal:
+
+  $ bold(s) = bold(s_0) + lambda bold(e_j) $
+
+  where $bold(e_j)$ is the $j$-th canonical basis vector and $lambda in RR$ is a scaling factor.
+
+  The DCT representation of $bold(s)$ becomes:
+
+  $
+    bold(x) = bold(D)_"DCT"^T bold(s) = bold(D)_"DCT"^T bold(s_0) + lambda bold(D)_"DCT"^T bold(e_j) = bold(x_0) + lambda bold(D)_"DCT"^T bold(e_j)
+  $
+
+  Since $bold(D)_"DCT"^T bold(e_j)$ is typically dense (all entries are non-zero), the addition of a single spike destroys the sparsity of the representation.
+]
+
+== Experimental Demonstration
+
+// NOTE: This section would typically include figures showing the DCT coefficients before and after adding a spike
+
+The experimental verification of this limitation involves:
+
+1. Generate a sparse signal $bold(s_0)$ with respect to DCT basis
+2. Add a single spike: $bold(s) = bold(s_0) + lambda bold(e_j)$
+3. Compute DCT coefficients of both signals
+4. Observe the loss of sparsity in the modified signal
+
+The results consistently show that the addition of a single spike causes all DCT coefficients to become significant, effectively destroying the sparse structure that denoising algorithms rely upon.
+
+== Overcomplete Dictionaries: The Solution
+=== Motivation for Redundancy
+The solution to the sparsity limitation lies in abandoning the constraint of orthonormality and embracing redundancy. Instead of using a single $n times n$ orthonormal basis, we construct an $n times m$ dictionary matrix $bold(D)$ where $m > n$.
+
+#definition("Overcomplete Dictionary")[
+  An _overcomplete dictionary_ is a matrix $bold(D) in RR^(n times m)$ with $m > n$ such that:
+
+  $ "span"{bold(d)_1, bold(d)_2, ..., bold(d)_m} = RR^n $
+
+  where $bold(d)_i$ are the columns of $bold(D)$.
+]
+
+=== Construction of Overcomplete Dictionaries
+For the DCT-spike example, we construct the overcomplete dictionary by concatenating the DCT basis with the *canonical basis*:
+
+$ bold(D) = mat(bold(D)_"DCT", bold(I)) in RR^(n times 2n) $
+
+This construction ensures that:
+- Signals sparse in DCT domain remain sparse
+- Signals sparse in canonical domain remain sparse
+- Mixed signals (DCT-sparse + spikes) admit sparse representations
+
+#example("Sparse Representation with Overcomplete Dictionary")[
+  Consider the signal $bold(s) = bold(s)_0 + lambda bold(e)_j$ where $bold(s)_0 = bold(D)_"DCT" bold(x)_0$ with sparse $bold(x)_0$.
+
+  The representation with respect to the overcomplete dictionary is:
+
+  $ bold(s) = bold(D) mat(bold(x)_0; lambda bold(e)_j) $
+
+  The coefficient vector $mat(bold(x)_0; lambda bold(e)_j) in RR^(2n)$ is sparse, containing only the non-zero entries of $bold(x)_0$ plus the single entry $lambda$ at position $j$ in the second block.
+]
+
+=== Theoretical Properties of Overcomplete Systems
+
+#theorem("Rouché-Capelli Theorem")[
+  Consider the linear system $bold(D)bold(x) = bold(s)$ where $bold(D) in RR^(n times m)$ and $bold(s) in RR^n$. The system admits a solution if and only if:
+
+  $ "rank"(bold(D)) = "rank"(mat(bold(D), bold(s))) $
+] <thm:rouche>
+
+When $m > n$ and $"rank"(bold(D)) = n$, the system has infinitely many solutions forming an affine subspace of dimension $m - n$.
+
+#theorem("Solution Space Dimension")[
+  If $bold(D) in RR^(n times m)$ with $m > n$ and $"rank"(bold(D)) = n$, then for any $bold(s) in RR^n$, the solution set of $bold(D)bold(x) = bold(s)$ forms an affine subspace of dimension $m - n$.
+]
+
+#pagebreak()
+
+== Regularization and Sparse Recovery
+=== The Ill-Posed Nature of Overcomplete Systems
+The abundance of solutions in overcomplete systems necessitates additional criteria for solution selection. This is where regularization theory becomes essential.
+
+#definition("Regularization")[
+  Given an *ill-posed* problem $bold(D)bold(x) = bold(s)$ with multiple solutions, _regularization_ involves solving:
+
+  $ hat(bold(x)) = arg min_(bold(x)) J(bold(x)) quad "subject to" quad bold(D)bold(x) = bold(s) $
+
+  where $J: RR^m -> RR_+$ is a regularization functional encoding our prior knowledge about the desired solution.
+]
+
+=== $ell_2$ Regularization: Ridge Regression
+
+The most mathematically tractable regularization is the $ell_2$ norm:
+
+$ J(bold(x)) = 1/2 ||bold(x)||_2^2 = 1/2 sum_(i=1)^m x_i^2 $
+
+This leads to the constrained optimization problem:
+
+$ hat(bold(x)) = arg min_(bold(x)) 1/2 ||bold(x)||_2^2 quad "subject to" quad bold(D)bold(x) = bold(s) $
+
+Alternatively, we can formulate the unconstrained version:
+
+$ hat(bold(x)) = arg min_(bold(x)) 1/2 ||bold(D)bold(x) - bold(s)||_2^2 + lambda/2 ||bold(x)||_2^2 $
+
+#theorem("Ridge Regression Solution")[
+  The solution to the ridge regression problem:
+
+  $ hat(bold(x)) = arg min_(bold(x)) 1/2 ||bold(D)bold(x) - bold(s)||_2^2 + lambda/2 ||bold(x)||_2^2 $
+
+  is given by:
+
+  $ hat(bold(x)) = (bold(D)^T bold(D) + lambda bold(I))^(-1) bold(D)^T bold(s) $
+
+  where $lambda > 0$ ensures the matrix $(bold(D)^T bold(D) + lambda bold(I))$ is invertible.
+
+  *Proof*:
+  Define the objective function:
+
+  $ f(bold(x)) = 1/2 ||bold(D)bold(x) - bold(s)||_2^2 + lambda/2 ||bold(x)||_2^2 $
+
+  Expanding the squared norms:
+
+  $
+    f(bold(x)) &= 1/2 (bold(D)bold(x) - bold(s))^T (bold(D)bold(x) - bold(s)) + lambda/2 bold(x)^T bold(x) \
+    &= 1/2 vec(x)^T bold(D)^T bold(D) vec(x) - vec(s)^T bold(D) vec(x) + 1/2 vec(s)^T vec(s) + lambda/2 vec(x)^T vec(x)
+  $
+
+  Taking the gradient with respect to $bold(x)$:
+
+  $ nabla f(bold(x)) = bold(D)^T bold(D) bold(x) - bold(D)^T bold(s) + lambda bold(x) $
+
+  Setting $nabla f(bold(x)) = bold(0)$:
+
+  $ (bold(D)^T bold(D) + lambda bold(I)) bold(x) = bold(D)^T bold(s) $
+
+  Since $lambda > 0$, the matrix $(bold(D)^T bold(D) + lambda bold(I))$ is positive definite and therefore invertible, yielding the stated solution.
+] <thm:ridge>
+
+=== Limitations of $ell_2$ Regularization
+While $ell_2$ regularization provides a computationally efficient solution, it does not promote sparsity. The solution $hat(bold(x))$ typically has all non-zero entries, which contradicts our goal of sparse representation.
+
+#attention([Sparsity vs. $ell_2$ Regularization])[
+  The $ell_2$ norm penalizes large coefficients but does not drive small coefficients to zero. For sparse recovery, we need regularization functionals that promote sparsity, such as the $ell_1$ norm or $ell_0$ pseudo-norm.
+]
+
+== Towards Sparsity: $ell_0$ and $ell_1$ Regularization
+=== The $ell_0$ "Norm" and True Sparsity
+The most natural regularization for sparse recovery is the $ell_0$ "norm" (technically a pseudo-norm):
+
+$ ||bold(x)||_0 = |{i : x_i != 0}| $
+
+This counts the number of non-zero entries in $bold(x)$. The corresponding optimization problem:
+
+$ hat(bold(x)) = arg min_(bold(x)) ||bold(x)||_0 quad "subject to" quad bold(D)bold(x) = bold(s) $
+
+directly seeks the sparsest representation.
+
+=== Computational Challenges
+The $ell_0$ minimization problem is NP-hard in general, making it computationally intractable for large-scale problems. This has led to the development of convex relaxations and approximation algorithms.
+
+#pagebreak()
+
+= Sparse Coding
+== The Sparse Coding Problem
+Given the desire for sparse representations, a natural formulation is to seek the sparsest possible $bold(alpha)$ such that:
+$
+  bold(x) = D bold(alpha)
+$
+This leads to the following optimization problem:
+$
+  min_(bold(alpha) in RR^n) norm(bold(alpha))_0 quad "subject to" quad bold(x) = D bold(alpha)
+$ <eq:p0_problem>
+This is often referred to as the *$P_0$ problem*.
+
+#align(center)[
+  #box(fill: gray.lighten(90%), stroke: 1pt + black, inset: 10pt, width: 85%, [
+    *Goal:* Among all solutions $bold(alpha)$ such that $D bold(alpha) = bold(x)$, select the sparsest one.
+  ])
+]
+
+*Challenge:* The $ell_0$ norm is non-convex, discontinuous, and leads to combinatorial complexity. Solving @eq:p0_problem exactly is NP-hard in general.
+
+=== Union of Subspaces Interpretation
+Let us assume $D in RR^(m times n)$ is a dictionary with $n > m$, i.e., an overcomplete dictionary.
+
+Suppose we restrict $bold(alpha)$ to have at most $s$ non-zero entries. Then the image $D bold(alpha)$ lies in a subspace spanned by $s$ columns of $D$.
+
+#definition("Sparsity-Induced Subspace")[
+  If $bold(alpha)$ has $norm(bold(alpha))_0 <= s$, then $bold(x) = D bold(alpha)$ lies in a subspace $S_omega := "span"(D_omega)$, where $omega$ is the support of $bold(alpha)$ and $D_omega$ denotes the sub-matrix of $D$ restricted to columns indexed by $omega$.
+]
+
+Therefore, the space of all $s$-sparse representations is the union of all such $s$-dimensional subspaces:
+$
+  cal(M)_s := union.big_(omega subset {1, dots, n}, |omega| <= s) "span"(D_omega)
+$
+
+#align(center)[
+  #box(
+    fill: gray.lighten(90%),
+    stroke: 1pt + black,
+    inset: 10pt,
+    width: 85%,
+    [
+      *Interpretation:* Sparse modeling corresponds to finding the best subspace (among exponentially many) in which to approximate the signal $bold(x)$.
+    ],
+  )
+]
+
+*Key Point:* Unlike PCA (which projects onto a single global subspace), sparse coding projects onto a _union of low-dimensional subspaces_, selected adaptively based on the input $bold(x)$.
+
+=== A 2D Illustration of Sparsity
+
+Suppose we are working in $RR^2$ and $D$ has 3 atoms:
+$
+  D = mat(bold(d)_1, bold(d)_2, bold(d)_3), quad D in RR^(2 times 3)
+$
+Each $bold(d)_i$ is a column vector in $RR^2$.
+
+Let $bold(x) in RR^2$ be a signal we wish to approximate. If we restrict $norm(bold(alpha))_0 = 1$, then the approximant $D bold(alpha)$ must lie along one of the directions $bold(d)_1$, $bold(d)_2$, or $bold(d)_3$.
+
+#figure(
+  canvas({
+    import draw: *
+
+    set-style(
+      stroke: (thickness: 1pt, cap: "round"),
+      mark: (fill: black, scale: 1.2),
+    )
+
+    // Draw the three dictionary atoms
+    line((0, 0), (3, 0), mark: (end: "stealth"))
+    content((3.2, 0), [$bold(d)_1$], anchor: "west")
+
+    line((0, 0), (2.1, 2.1), mark: (end: "stealth"))
+    content((2.3, 2.3), [$bold(d)_2$], anchor: "south-west")
+
+    line((0, 0), (0, 3), mark: (end: "stealth"))
+    content((0, 3.2), [$bold(d)_3$], anchor: "south")
+
+    // Draw the signal vector
+    set-style(stroke: (paint: blue, thickness: 2pt))
+    line((0, 0), (1.8, 1.35), mark: (end: "stealth"))
+    content((2, 1.5), text(fill: blue, [$bold(x)$]), anchor: "west")
+  }),
+  caption: [Approximation of $bold(x)$ via projections onto sparse atoms],
+)
+
+*Interpretation:*
+- We seek the atom $bold(d)_i$ such that the projection of $bold(x)$ onto $"span"(bold(d)_i)$ minimizes the residual.
+- This is the best 1-sparse approximation.
+
+*In general:*
+If $norm(bold(alpha))_0 <= s$, the approximation lives in a union of $binom(n, s)$ subspaces.
+
+=== Combinatorial Intractability
+*Why is $P_0$ hard?* To find the optimal $s$-sparse representation of $bold(x)$, one must:
++ Enumerate all subsets $omega subset {1, dots, n}$ of size $s$
++ Solve the least squares problem:
+  $
+    bold(alpha)_omega = arg min_(bold(z) in RR^s) norm(D_omega bold(z) - bold(x))_2^2
+  $
++ Select the best $omega$ minimizing the residual.
+
+The number of subsets grows exponentially:
+$
+  "#subspaces" = binom(n, s) tilde (n e / s)^s
+$
+
+*Illustrative Example:*
+Let $n = 1000$, $s = 20$. Then:
+$
+  binom(1000, 20) approx 10^34
+$
+Assuming a billion operations per second, exhaustive search would take more time than the age of the universe.
+
+#align(center)[
+  #box(
+    fill: gray.lighten(90%),
+    stroke: 1pt + black,
+    inset: 10pt,
+    width: 85%,
+    [
+      *Conclusion:* The $ell_0$ sparse coding problem is combinatorially explosive. Efficient approximations are necessary.
+    ],
+  )
+]
+
+#pagebreak()
+
+== Greedy Algorithms for Sparse Coding
+Given the computational intractability of exact $ell_0$ minimization, we turn to greedy approximation algorithms that provide computationally feasible solutions.
+
+A *greedy algorithm* for sparse coding makes locally optimal choices at each iteration without reconsidering previous decisions, building up the solution incrementally by adding one dictionary atom at a time.
+
+#example("Coin Change Analogy")[
+  The greedy approach mirrors the coin change problem:
+  - *Goal*: Minimize the number of coins to make change
+  - *Greedy strategy*: Always use the largest denomination possible
+  - *Limitation*: Optimal only for specially designed coin systems
+
+  For standard currency systems (e.g., {1, 2, 5, 10, 20, 50}), greedy gives optimal solutions. However, for pathological systems (e.g., {1, 3, 4}), greedy fails: making change for 6 units gives greedy solution 4+1+1 (3 coins) vs. optimal 3+3 (2 coins).
+] <ex:coin_change>
+
+#pagebreak()
+
+== Matching Pursuit Algorithm
+The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse coding:
+*Input:* Signal $bold(y)$, dictionary $bold(D)$ (normalized), stopping criterion \
+*Output:* Sparse representation $bold(x)$
+
++ *Initialize:*
+  $
+    bold(x)^((0)) & = bold(0) quad      & "(coefficient vector)" \
+    bold(r)^((0)) & = bold(y) quad      &           "(residual)" \
+      Omega^((0)) & = emptyset.rev quad &         "(active set)" \
+                k & = 0 quad            &  "(iteration counter)"
+  $
+
++ *Sweep Stage:* For each atom $j = 1, dots, n$, compute the approximation error:
+  $
+    E_j^((k)) = norm(bold(r)^((k)) - angle.l bold(d)_j \, bold(r)^(k) angle.r bold(d)_j)_2^2
+  $ <eq:mp_error>
+
++ *Atom Selection:* Choose the atom with minimum error:
+  $
+    j^* = arg min_(j=1,dots,n) E_j^((k))
+  $ <eq:mp_selection>
+
+  Equivalently (by maximizing correlation):
+  $
+    j^* = arg max_(j=1,dots,n) angle.l bold(d)_j \, bold(r)^(k) angle.r
+  $ <eq:mp_correlation>
+
++ *Coefficient Update:* Compute the projection coefficient:
+  $
+    z_(j^*)^((k)) = angle.l bold(d)_(j^*) \, bold(r)^(k) angle.r
+  $ <eq:mp_coefficient>
+
++ *Solution Update:*
+  $
+    bold(x)^((k+1)) = bold(x)^((k)) + z_(j^*)^((k)) bold(e)_(j^*)
+  $ <eq:mp_solution_update>
+  where $bold(e)_(j^*)$ is the $j^*$-th standard basis vector.
+
++ *Residual Update:*
+  $
+    bold(r)^((k+1)) = bold(r)^((k)) - z_(j^*)^((k)) bold(d)_(j^*)
+  $ <eq:mp_residual_update>
+
++ *Active Set Update:*
+  $
+    Omega^((k+1)) = Omega^((k)) union {j^*}
+  $
+
++ *Stopping Criteria:* Terminate if:
+  - $|Omega^((k+1))| >= k_"max"$ (maximum sparsity reached)
+  - $norm(bold(r)^((k+1)))_2 <= epsilon$ (residual threshold met)
+
+  Otherwise, set $k arrow.l k+1$ and return to step 2.
+
+#pagebreak()
+
+=== Residual Monotonicity
+The Matching Pursuit algorithm produces a monotonically decreasing sequence of residual norms:
+$
+  norm(bold(r)^((k+1)))_2 <= norm(bold(r)^((k)))_2
+$
+with strict inequality unless $bold(r)^((k))$ is orthogonal to all dictionary atoms.
+
+=== Atom Reselection
+Unlike orthogonal methods, Matching Pursuit may select the same atom multiple times in successive iterations. This occurs because:
++ The algorithm does not enforce orthogonality of residuals to previously selected atoms
++ Residual components may align with previously selected atoms after updates
++ This can lead to slower convergence compared to orthogonal variants
+
+=== Convergence Analysis
+For any finite dictionary $bold(D)$ and signal $bold(y)$, the Matching Pursuit algorithm converges in the sense that:
+$
+  lim_(k -> oo) norm(bold(r)^((k)))_2 = min_(bold(x)) norm(bold(y) - bold(D) bold(x))_2
+$
+Furthermore, if $bold(y) in "span"(bold(D))$, then the algorithm achieves exact recovery in finite steps.
+
+=== Approximation Quality
+While Matching Pursuit provides computational tractability, it may not achieve the globally optimal sparse solution. The quality of approximation depends on the coherence structure of the dictionary.
+
+The *coherence* of a dictionary $bold(D)$ with normalized columns is:
+$
+  mu(bold(D)) = max_(i != j) |bold(d)_i^T bold(d)_j|
+$
+Under certain conditions on dictionary coherence and signal sparsity, Matching Pursuit provides approximation guarantees. Specifically, if the true sparse representation has sparsity $k$ and the dictionary satisfies appropriate coherence conditions, then MP recovers a solution with controlled approximation error.
+
+=== Computational Complexity
+Each iteration of Matching Pursuit requires:
+- $cal(O)(m n)$ operations for the sweep stage (computing all correlations)
+- $cal(O)(m)$ operations for residual update
+- Total per-iteration complexity: $cal(O)(m n)$
+
+For $k$ iterations, the total complexity is $cal(O)(k m n)$, which is polynomial and practically feasible.
+
+#pagebreak()
+
+== Orthogonal Matching Pursuit
+*Orthogonal Matching Pursuit (OMP)* is a variant of Matching Pursuit that enforces orthogonality of the residuals to previously selected atoms. This leads to improved convergence properties and better approximation quality.
+
+The OMP algorithm embodies the greedy principle for sparse coding with orthogonal projections:
+
+*Input:* Signal $bold(y)$, dictionary $bold(D)$ (normalized), stopping criterion \
+*Output:* Sparse representation $bold(x)$
+
++ *Initialize:*
+  $
+    bold(x)^((0)) & = bold(0) quad      & "(coefficient vector)" \
+    bold(r)^((0)) & = bold(y) quad      &           "(residual)" \
+      Omega^((0)) & = emptyset.rev quad &         "(active set)" \
+                k & = 0 quad            &  "(iteration counter)"
+  $
+
++ *Atom Selection:* Choose the atom with maximum correlation:
+  $
+    j^* = arg max_(j=1,dots,n) |angle.l bold(d)_j \, bold(r)^((k)) angle.r|
+  $ <eq:omp_selection>
+
++ *Active Set Update:*
+  $
+    Omega^((k+1)) = Omega^((k)) union {j^*}
+  $
+
++ *Orthogonal Projection:* Solve the least squares problem over the active set:
+  $
+    bold(alpha)_Omega^((k+1)) = arg min_(bold(z)) norm(bold(D)_Omega bold(z) - bold(y))_2^2
+  $ <eq:omp_projection>
+
+  where $bold(D)_Omega$ is the sub-matrix of $bold(D)$ with columns indexed by $Omega^((k+1))$.
+
++ *Solution Update:*
+  $
+    bold(x)^((k+1))_j = cases(
+      alpha_j^((k+1)) quad & "if" j in Omega^((k+1)),
+      0 quad & "otherwise"
+    )
+  $ <eq:omp_solution_update>
+
++ *Residual Update:* Compute the orthogonal residual:
+  $
+    bold(r)^((k+1)) = bold(y) - bold(D)_Omega bold(alpha)_Omega^((k+1))
+  $ <eq:omp_residual_update>
+
++ *Stopping Criteria:* Terminate if:
+  - $|Omega^((k+1))| >= k_"max"$ (maximum sparsity reached)
+  - $norm(bold(r)^((k+1)))_2 <= epsilon$ (residual threshold met)
+
+  Otherwise, set $k arrow.l k+1$ and return to step 2.
+
+#pagebreak()
+
+== OMP-Based Image Denoising
+The integration of OMP into image denoising frameworks requires careful consideration of patch processing, dictionary design, and aggregation strategies.
+
+Natural images exhibit strong local correlations but varying global statistics. The patch-based approach decomposes the image into overlapping patches, each processed independently:
+
+*Input:* Noisy image $bold(Y) in RR^(N times M)$, dictionary $bold(D) in RR^(n times m)$, sparsity level $s$ \
+*Output:* Denoised image $hat(bold(Y))$
+
++ *Patch Extraction:* For image $bold(Y) in RR^(N times M)$, extract patches $(bold(y)_i)_(i=1)^P$ where each $bold(y)_i in RR^n$ represents a vectorized $sqrt(n) times sqrt(n)$ patch.
+
++ *Mean Computation and Centering:* For each patch $bold(y)_i$:
+  $
+                mu_i & = 1/n sum_(j=1)^n y_(i,j)  \
+    tilde(bold(y))_i & = bold(y)_i - mu_i bold(1)
+  $
+  where $bold(1) in RR^n$ is the vector of all ones.
+
++ *Sparse Coding:* Apply OMP to each mean-centered patch:
+  $
+    hat(bold(alpha))_i = "OMP"(bold(D), tilde(bold(y))_i, s)
+  $
+
++ *Reconstruction:* Compute denoised patches by adding back the mean:
+  $
+    hat(bold(x))_i = bold(D) hat(bold(alpha))_i + mu_i bold(1)
+  $
+
++ *Aggregation:* Reconstruct the full image by averaging overlapping reconstructions at each pixel location.
+
+== Linearity Analysis of Sparse Coding Algorithms
+
+A fundamental question in sparse coding concerns the linearity properties of the resulting algorithms. An algorithm $cal(A)$ is considered linear if and only if it satisfies:
+
+#definition("Linear Algorithm")[
+  An algorithm $cal(A): RR^m -> RR^n$ is linear if and only if for all $alpha, beta in RR$ and $bold(y)_1, bold(y)_2 in RR^m$:
+  $
+    cal(A)(alpha bold(y)_1 + beta bold(y)_2) = alpha cal(A)(bold(y)_1) + beta cal(A)(bold(y)_2)
+  $
+] <def:linear_algorithm>
+
+#pagebreak()
+
+== Uniqueness Guarantees for Sparse Solutions
+The following theorem provides conditions under which the solution to the $ell_0$ constraint problem is unique.
+
+#theorem([Uniqueness of $ell_0$ Solutions])[
+  Consider the system $bold(D) bold(x) = bold(y)$ where $bold(D) in RR^{m times n}$. If there exists a solution $hat(bold(x))$ such that:
+  $
+    norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))
+  $
+  then $hat(bold(x))$ is the unique solution to the $ell_0$ constraint problem.
+
+  *Proof:*
+  Suppose, for the sake of contradiction, that there exists another solution $tilde(bold(x)) != hat(bold(x))$ such that $bold(D) tilde(bold(x)) = bold(y)$.
+
+  Since both $hat(bold(x))$ and $tilde(bold(x))$ satisfy the linear system:
+  $
+      bold(D) hat(bold(x)) & = bold(y) \
+    bold(D) tilde(bold(x)) & = bold(y)
+  $
+
+  Subtracting these equations yields:
+  $
+    bold(D)(hat(bold(x)) - tilde(bold(x))) = bold(0)
+  $
+
+  This shows that $hat(bold(x)) - tilde(bold(x))$ is a non-zero solution to the homogeneous system. By @lem:spark_homogeneous:
+  $
+    "spark"(bold(D)) <= norm(hat(bold(x)) - tilde(bold(x)))_0
+  $
+
+  Using the triangle inequality for the $ell_0$ pseudo-norm:
+  $
+    norm(hat(bold(x)) - tilde(bold(x)))_0 <= norm(hat(bold(x)))_0 + norm(tilde(bold(x)))_0
+  $
+
+  Combining these inequalities:
+  $
+    "spark"(bold(D)) <= norm(hat(bold(x)))_0 + norm(tilde(bold(x)))_0
+  $
+
+  Since $tilde(bold(x))$ is also assumed to be a solution to the $ell_0$ problem, and $hat(bold(x))$ is the optimal solution:
+  $
+    norm(tilde(bold(x)))_0 >= norm(hat(bold(x)))_0
+  $
+
+  Therefore:
+  $
+    "spark"(bold(D)) <= 2 norm(hat(bold(x)))_0
+  $
+
+  This contradicts our assumption that $norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))$. Hence, $hat(bold(x))$ is unique.
+] <thm:l0_uniqueness>
+
+#attention("Practical Limitations")[
+  While theoretically elegant, the uniqueness conditions are often too restrictive in practice:
+  - Computing $"spark"(bold(D))$ is computationally intractable for large matrices
+  - The bound $norm(hat(bold(x)))_0 < 1/2 "spark"(bold(D))$ is often very conservative
+  - Real-world signals may not satisfy the sparsity requirements
+]
+
+#pagebreak()
+
+== Application to Image Inpainting
+Image inpainting addresses the reconstruction of missing or corrupted pixels in digital images. Using sparse coding theory, we can formulate inpainting as a sparse reconstruction problem.
+
+Consider an image patch $bold(s)_0 in RR^n$ (vectorized) and its corrupted version $bold(s) in RR^n$ where some pixels are missing or corrupted. The relationship between them can be expressed as:
+$
+  bold(s) = bold(Omega) bold(s)_0
+$
+where $bold(Omega) in RR^{n times n}$ is a diagonal matrix with:
+$
+  Omega_(i i) = cases(
+    1 quad & "if pixel " i " is known",
+    0 quad & "if pixel " i " is missing"
+  )
+$
+
+Assuming the original patch admits a sparse representation:
+$
+  bold(s)_0 = bold(D) bold(x)_0
+$
+
+where $bold(D) in RR^(n times m)$ is an overcomplete dictionary and $bold(x)_0$ is sparse, the corrupted patch becomes:
+$
+  bold(s) = bold(Omega) bold(D) bold(x)_0 = bold(D)_Omega bold(x)_0
+$
+where $bold(D)_Omega = bold(Omega) bold(D)$ represents the "inpainted dictionary."
+
+The key insight is that the spark of the inpainted dictionary relates to the original dictionary:
+#proposition("Spark of Inpainted Dictionary")[
+  For the inpainted dictionary $bold(D)_Omega = bold(Omega) bold(D)$:
+  $
+    "spark"(bold(D)_Omega) >= "spark"(bold(D))
+  $
+] <prop:inpainted_spark>
+
+*Proof:*
+Removing rows (zeroing out pixels) from a matrix cannot decrease the spark, as linear dependencies between columns are preserved or potentially eliminated.
+
+Let $bold(s)_0$ be an image patch with sparse representation $bold(s)_0 = bold(D) bold(x)_0$ where $norm(bold(x)_0)_0 < 1/2 "spark"(bold(D)_Omega)$. Then:
++ The sparse coding problem $min_(bold(x)) norm(bold(x))_0$ subject to $bold(D)_Omega bold(x) = bold(s)$ has a unique solution $bold(x)_0$
++ The reconstruction $hat(bold(s))_0 = bold(D) bold(x)_0$ perfectly recovers the original patch
+
+*Proof:*
+The proof follows directly from @thm:l0_uniqueness applied to the inpainted dictionary $bold(D)_Omega$.
+
+*Sparse Coding Inpainting Algorithm*
+
+*Input:* Corrupted image patch $bold(s)$, dictionary $bold(D)$, mask $bold(Omega)$
+
++ *Construct inpainted dictionary:* $bold(D)_Omega = bold(Omega) bold(D)$
++ *Solve sparse coding:* $hat(bold(x)) = arg min_(bold(x)) norm(bold(x))_0$ subject to $bold(D)_Omega bold(x) = bold(s)$
++ *Reconstruct patch:* $hat(bold(s))_0 = bold(D) hat(bold(x))$
+
+*Output:* Inpainted patch $hat(bold(s))_0$
+
+In practice, step 2 is solved using OMP with the inpainted dictionary:
+$
+  hat(bold(x)) = "OMP"(bold(D)_Omega, bold(s), K)
+$
+
+where $K$ is a predetermined sparsity level. The key insight is that the synthesis step uses the original dictionary $bold(D)$, not the inpainted dictionary $bold(D)_Omega$.
+
+#pagebreak()
+
+= Sparse Coding in $ell_1$ sense
+The $ell_0$ norm, defined as the number of non-zero components in a vector, provides the most intuitive measure of sparsity. However, optimization problems involving the $ell_0$ norm are NP-hard due to their combinatorial nature. This computational intractability necessitates the exploration of alternative sparsity-promoting norms that maintain favorable optimization properties.
+
+The $ell_1$ optimization problem for sparse coding can be formulated in two equivalent ways:
+
+#definition([Constrained $ell_1$ Problem (P1)])[
+  $
+    min_(bold(x)) norm(bold(x))_1 quad "subject to" quad norm(bold(A) bold(x) - bold(b))_2 <= epsilon
+  $
+] <def:p1_problem>
+
+#definition([Regularized $ell_1$ Problem (P2)])[
+  $
+    min_(bold(x)) 1/2 norm(bold(A) bold(x) - bold(b))_2^2 + lambda norm(bold(x))_1
+  $
+] <def:p2_problem>
+
+#attention("Connection to LASSO")[
+  The regularized formulation (P2) is known in statistics as the Least Absolute Shrinkage and Selection Operator (LASSO), introduced by Robert Tibshirani.
+
+  While LASSO and sparse coding share the same mathematical formulation, they operate in different contexts:
+  - *LASSO*: Overdetermined systems ($m > n$) for variable selection
+  - *Sparse Coding*: Underdetermined systems ($m < n$) for signal representation
+]
+
+These formulations represent two different perspectives on the same underlying optimization challenge:
+- *P1* minimizes sparsity subject to a constraint on approximation error
+- *P2* balances approximation error and sparsity through a regularization parameter $lambda$
+
+The equivalence between these formulations is established through the relationship between the constraint parameter $epsilon$ in P1 and the regularization parameter $lambda$ in P2, though this relationship is generally implicit and problem-dependent.
+
+#pagebreak()
+
+== Problem Components Analysis
+=== Data Fidelity Term
+The term $1/2 norm(bold(A) bold(x) - bold(b))_2^2$ serves as the data fidelity term, ensuring that the solution $bold(x)$ produces a reconstruction $bold(A) bold(x)$ that is close to the observed signal $bold(b)$.
+
+#proposition("Properties of Data Fidelity Term")[
+  The data fidelity term $g(bold(x)) = 1/2 norm(bold(A) bold(x) - bold(b))_2^2$ is:
+  + Convex (as a composition of convex functions)
+  + Differentiable with gradient $nabla g(bold(x)) = bold(A)^T (bold(A) bold(x) - bold(b))$
+  + Strongly convex if $bold(A)$ has full column rank
+]
+
+=== Regularization Term
+The term $lambda norm(bold(x))_1$ acts as a regularization term, promoting sparsity in the solution.
+
+#proposition([Properties of $ell_1$ Regularization])[
+  The regularization term $h(bold(x)) = norm(bold(x))_1$ is:
+  + Convex
+  + Non-differentiable at $x_i = 0$ for any component $i$
+  + Promotes sparsity through its geometric properties
+]
+
+== Proximal Gradient Methods
+For the composite optimization problem $min_(bold(x)) f(bold(x)) + g(bold(x))$ where $f$ is smooth and $g$ is non-smooth, we introduce the proximal operator.
+
+#definition("Proximal Operator")[
+  The proximal operator of a function $g$ with parameter $lambda > 0$ is defined as:
+  $
+    "prox"_(lambda g)(bold(v)) = arg min_(bold(x)) {1/(2lambda) norm(bold(x) - bold(v))_2^2 + g(bold(x))}
+  $
+]
+
+#pagebreak()
+
+= Dictionary Learning
+== Introduction to Dictionary Learning
+*Dictionary learning* represents a fundamental paradigm in signal processing and machine learning, where the objective is to discover optimal sparse representations of data. Unlike traditional approaches that rely on pre-constructed bases such as the Discrete Cosine Transform (DCT) or Principal Component Analysis (PCA), dictionary learning adapts the representation to the specific characteristics of the training data.
+
+The concept of dictionary learning emerged from the intersection of sparse coding theory and matrix factorization techniques. While classical orthogonal transforms like DCT and PCA provide optimal representations for specific signal classes, they often fail to capture the intrinsic structure of complex, real-world data.
+
+#definition("Dictionary Learning Problem")[
+  Given a set of training signals $bold(y)_1, bold(y)_2, ..., bold(y)_N in RR^n$, the dictionary learning problem seeks to find:
+  + A dictionary matrix $bold(D) in RR^{n times m}$ with $m > n$ (redundant dictionary)
+  + Sparse coefficient vectors $bold(x)_1, bold(x)_2, ..., bold(x)_N in RR^m$
+
+  such that $bold(y)_i approx bold(D) bold(x)_i$ for all $i = 1, 2, ..., N$, where each $bold(x)_i$ has at most $T_0$ non-zero entries.
+]
+
+Dictionary learning employs a block coordinate descent strategy, alternating between two phases:
++ *Sparse Coding Phase:* Fix $D$ and solve for $X$
++ *Dictionary Update Phase:* Fix $X$ and update $D$
+
+== Problem Formulation
+Let $bold(Y) = [bold(y)_1, bold(y)_2, ..., bold(y)_N] in RR^(n times N)$ denote the training matrix, where each column represents a training signal. Similarly, let $bold(X) = [bold(x)_1, bold(x)_2, ..., bold(x)_N] in RR^(m times N)$ represent the sparse coefficient matrix.
+
+The dictionary learning problem can be formulated as the following optimization:
+$
+  min_(bold(D), bold(X)) norm(bold(Y) - bold(D) bold(X))_F^2
+  quad "subject to" quad norm(bold(x)_i)_0 <= T_0, quad forall i = 1, 2, ..., N
+$ <eq:dictionary_learning_problem>
+where $norm(dot)_F$ denotes the Frobenius norm and $norm(dot)_0$ is the $ell_0$ pseudo-norm counting non-zero entries.
+
+
+*(Normalization Constraint:)*. To resolve scaling ambiguities, we impose the constraint that each column of $bold(D)$ has unit $ell_2$ norm:
+$
+  norm(bold(d)_j)_2 = 1, quad forall j = 1, 2, ..., m
+$
+
+The optimization problem @eq:dictionary_learning_problem presents several fundamental challenges:
++ *Non-convexity*: The objective function is non-convex in the joint variables $bold(D), bold(X)$, even though it is convex in each variable individually when the other is fixed.
++ *Sparsity Constraint*: The $ell_0$ pseudo-norm constraint is non-convex and combinatorial, making direct optimization intractable.
++ *Solution ambiguity*: Multiple equivalent solutions exist due to:
+  - Column permutations of $bold(D)$ with corresponding row permutations of $bold(X)$
+  - Sign ambiguities: $bold(d)_j, bold(x)_j) equiv (-bold(d)_j, -bold(x)_j)$
+
+#pagebreak()
+
+== Sparse Coding Phase
+The sparse coding phase solves the following problem for each training signal:
+
+$
+  bold(x)_i^((k+1)) = arg min_(bold(x)) norm(bold(y)_i - bold(D)^((k)) bold(x))_2^2
+  quad "subject to" quad norm(bold(x))_0 <= T_0
+$ <eq:sparse_coding>
+
+This is precisely the sparse coding problem discussed in previous sections, which can be solved using greedy algorithms such as:
+
+- *Orthogonal Matching Pursuit (OMP)*: Iteratively selects atoms that best correlate with the current residual
+- *Matching Pursuit (MP)*: Similar to OMP but without orthogonalization
+- *Basis Pursuit*: Convex relaxation using $ell_1$ norm
+
+The sparse coding phase is computationally the most expensive part of dictionary learning, as it requires solving $N$ sparse coding problems (one for each training signal) at each iteration.
+
+== Dictionary Update Phase
+The dictionary update phase constitutes the core innovation of K-SVD. Rather than updating the entire dictionary simultaneously, K-SVD updates one column at a time while simultaneously updating the corresponding sparse coefficients.
+
+=== Matrix Factorization Perspective
+Consider the error matrix:
+$
+  bold(E) = bold(Y) - bold(D) bold(X)
+$ <eq:error_matrix>
+Using the fundamental matrix identity, we can decompose the product $bold(D) bold(X)$ as:
+$
+  bold(D) bold(X) = sum_(j=1)^m bold(d)_j bold(x)_j^T
+$ <eq:matrix_decomp>
+where $bold(x)_j^T$ denotes the $j$-th row of $bold(X)$.
+
+=== Isolated Column Update
+To update the $j_0$-th column of $bold(D)$, we rewrite @eq:matrix_decomp as:
+$
+  bold(D) bold(X) = sum_(j != j_0) bold(d)_j bold(x)_j^T + bold(d)_(j_0) bold(x)_(j_0)^T
+$ <eq:isolated_column>
+Define the error matrix excluding the $j_0$-th atom:
+$
+  bold(E)_(j_0) = bold(Y) - sum_(j != j_0) bold(d)_j bold(x)_j^T
+$ <eq:error_j0>
+The update problem becomes:
+$
+  min_(bold(d)_(j_0), bold(x)_(j_0)^T) norm(bold(E)_(j_0) - bold(d)_(j_0) bold(x)_(j_0)^T)_F^2
+  quad "subject to" quad norm(bold(d)_(j_0))_2 = 1
+$ <eq:rank_one_approx>
+This is a rank-one matrix approximation problem, optimally solved using the Singular Value Decomposition (SVD).
+
+=== SVD solution
+#theorem("Rank-One Matrix Approximation")[
+  Let $bold(A) in RR^{n times N}$ be given. The solution to
+  $
+    min_(bold(u), bold(v)) norm(bold(A) - bold(u) bold(v)^T)_F^2 quad "subject to" quad norm(bold(u))_2 = 1
+  $
+  is given by $bold(u) = bold(u)_1$ and $bold(v)^T = sigma_1 bold(v)_1^T$, where $bold(A) = sum_(i=1)^(min(n, N)) sigma_i bold(u)_i bold(v)_i^T$ is the SVD of $bold(A)$.
+] <thm:rank_one>
+
+*Proof:*
+The Frobenius norm can be expressed as:
+$
+  norm(bold(A) - bold(u) bold(v)^T)_F^2 &= norm(bold(A))_F^2 - 2 "trace"(bold(A)^T bold(u) bold(v)^T) + norm(bold(u) bold(v)^T)_F^2 \
+  &= norm(bold(A))_F^2 - 2 bold(v)^T bold(A)^T bold(u) + norm(bold(v))_2^2
+$
+
+Since $norm(bold(u))_2 = 1$, maximizing $bold(v)^T bold(A)^T bold(u)$ is equivalent to finding the leading singular vectors of $bold(A)$.
+
+=== Sparsity Preservation
+A critical challenge in the dictionary update is preserving the sparsity structure of $bold(X)$. The naive application of @thm:rank_one would yield a dense row vector $bold(x)_(j_0)^T$, violating the sparse coding constraint.
+
+*Solution - Restricted SVD:* K-SVD addresses this by restricting the update to only those training signals that actually use the $j_0$-th atom:
+$
+  Omega_(j_0) = {i : x_(j_0,i) != 0}
+$ <eq:support_set>
+Define the restricted error matrix:
+$
+  bold(E)_(j_0)^R = bold(E)_(j_0)(:, Omega_(j_0))
+$ <eq:restricted_error>
+The restricted update problem becomes:
+$
+  min_(bold(d)_(j_0), bold(x)_(j_0)^R) norm(bold(E)_(j_0)^R - bold(d)_(j_0) (bold(x)_(j_0)^R)^T)_F^2
+  quad "subject to" quad norm(bold(d)_(j_0))_2 = 1
+$ <eq:restricted_update>
+where $bold(x)_(j_0)^R$ contains only the non-zero elements of $bold(x)_(j_0)^T$.
+
+*Dictionary Update Algorithm for Column $j_0$:*
++ Compute error matrix: $bold(E)_(j_0) = bold(Y) - sum_(j != j_0) bold(d)_j bold(x)_j^T$
++ Identify support: $Omega_(j_0) = {i : x_(j_0,i) != 0}$
++ Extract restricted matrix: $bold(E)_(j_0)^R = bold(E)_(j_0)(:, Omega_(j_0))$
++ Compute SVD: $bold(E)_(j_0)^R = bold(U) bold(Sigma) bold(V)^T$
++ Update dictionary: $bold(d)_(j_0) = bold(u)_1$
++ Update coefficients: $bold(x)_(j_0)^R = sigma_1 bold(v)_1$
++ Restore to full representation: $bold(x)_(j_0)^T (Omega_(j_0)) = bold(x)_(j_0)^R$
+
+
+#pagebreak()
+
+= Appendix: Fundamental Concepts in Linear Algebra
+== Vector Spaces and Linear Combinations
+#definition("Span of Vectors")[
+  Given a set of vectors ${bold(v)_1, bold(v)_2, ..., bold(v)_n} subset RR^m$, the _span_ of these vectors is defined as:
+
+  $ "span"{bold(v)_1, bold(v)_2, ..., bold(v)_n} = {sum_(i=1)^n lambda_i bold(v)_i : lambda_i in RR} $
+]
+
+The span represents the set of all possible linear combinations of the given vectors, forming a vector subspace of $RR^m$. This concept is fundamental to understanding how different sets of vectors can generate different subspaces.
+
+== Linear Independence and Basis
+
+#definition("Linear Independence")[
+  A set of vectors ${bold(v)_1, bold(v)_2, ..., bold(v)_n}$ is _linearly independent_ if and only if:
+
+  $ sum_(i=1)^n lambda_i bold(v)_i = bold(0) quad => quad lambda_i = 0 " for all " i = 1, 2, ..., n $
+]
+
+This definition captures the fundamental property that no vector in the set can be expressed as a linear combination of the others. The importance of linear independence becomes clear when we consider the uniqueness of representations.
+
+#theorem("Uniqueness of Representation")[
+  Let ${bold(e)_1, bold(e)_2, ..., bold(e)_n} subset RR^m$ be a linearly independent set of vectors. If $bold(s) in "span"{bold(e)_1, bold(e)_2, ..., bold(e)_n}$, then there exists a unique representation:
+
+  $ bold(s) = sum_(i=1)^n x_i bold(e)_i $
+
+  where the coefficients $x_i in RR$ are uniquely determined.
+] <thm:uniqueness>
+
+*Proof: *
+Suppose $bold(s)$ admits two different representations:
+
+$
+  bold(s) & = sum_(i=1)^n x_i bold(e)_i \
+  bold(s) & = sum_(i=1)^n y_i bold(e)_i
+$
+
+Subtracting these equations:
+
+$ bold(0) = sum_(i=1)^n (x_i - y_i) bold(e)_i $
+
+By linear independence, $(x_i - y_i) = 0$ for all $i$, implying $x_i = y_i$ for all $i$. Therefore, the representation is unique.
+
+== Orthogonal Vectors
+#definition("Orthonormal Basis")[
+  A set of vectors ${bold(e)_1, bold(e)_2, ..., bold(e)_n} subset RR^n$ forms an _orthonormal basis_ if:
+
+  + $angle.l bold(e)_i, bold(e)_j angle.r = delta_(i j)$ (orthonormality condition)
+  + $"span"{bold(e)_1, bold(e)_2, ..., bold(e)_n} = RR^n$ (spanning condition)
+
+  where $delta_(i j)$ is the Kronecker delta.
+]
+
+The power of orthonormal bases lies in their computational convenience. For any signal $bold(s) in RR^n$ and orthonormal basis $bold(D) = [bold(e)_1, bold(e)_2, ..., bold(e)_n]$, the coefficient computation is straightforward:
+
+$ bold(x) = bold(D)^T bold(s) $
+
+where $bold(x) = (x_1, x_2, ..., x_n)^T$ and $x_i = angle.l bold(e)_i, bold(s) angle.r$.
+
+== The $ell_0$ Norm
+The $ell_0$ norm (more precisely, $ell_0$ pseudo-norm) of a vector $bold(x) in RR^n$ is defined as:
+$
+  norm(bold(x))_0 := |{i : x_i != 0}| = sum_(i=1)^n bold(1)_(x_i != 0)
+$
+where $bold(1)_{x_i != 0}$ is the indicator function that equals 1 if $x_i != 0$ and 0 otherwise.
+
+The $ell_0$ norm can be understood as the limit of $ell_p$ norms as $p -> 0^+$:
+$
+  norm(bold(x))_0 = lim_(p -> 0^+) norm(bold(x))_p^p = lim_(p -> 0^+) (sum_(i=1)^n |x_i|^p)
+$
+
+
+The $ell_0$ norm satisfies the following properties:
++ *Non-negativity*: $norm(bold(x))_0 >= 0$ for all $bold(x) in RR^n$
++ *Zero property*: $norm(bold(x))_0 = 0$ if and only if $bold(x) = bold(0)$
++ *Triangle inequality*: $norm(bold(x) + bold(y))_0 <= norm(bold(x))_0 + norm(bold(y))_0$
++ *Failure of homogeneity*: $norm(lambda bold(x))_0 != |lambda| norm(bold(x))_0$ for $lambda != 0, plus.minus 1$
+
+
+Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
+- $norm(bold(alpha))_0 = 0$: Only the origin $(0, 0, 0)$
+- $norm(bold(alpha))_0 = 1$: Points on coordinate axes, e.g., $(7, 0, 0)$, $(0, 3, 0)$
+- $norm(bold(alpha))_0 = 2$: Points lying in coordinate planes, e.g., $(5, 2, 0)$
+- $norm(bold(alpha))_0 = 3$: All other points in $RR^3$
+
+#pagebreak()
+
+== Matrix Spark
+The concept of matrix spark provides the theoretical foundation for understanding when sparse solutions are unique.
+
+#definition("Matrix Spark")[
+  For a matrix $bold(D) in RR^(m times n)$, the spark of $bold(D)$, denoted $"spark"(bold(D))$, is defined as:
+  $
+    "spark"(bold(D)) = min{|cal(S)| : cal(S) subset.eq {1, 2, ..., n}, bold(D)_cal(S) "is linearly dependent"}
+  $
+  where $|cal(S)|$ denotes the cardinality of the set $cal(S)$ and $bold(D)_cal(S)$ represents the submatrix of $bold(D)$ formed by columns indexed by $cal(S)$.
+
+  Equivalently, the spark can be defined in terms of the $ell_0$ norm as:
+  $
+    "spark"(bold(D)) = min{norm(bold(x))_0 : bold(D) bold(x) = bold(0), bold(x) != bold(0)}
+  $
+] <def:spark>
+
+The spark and rank of a matrix are related but distinct concepts:
+
+#proposition("Spark-Rank Relationship")[
+  For any matrix $bold(D) in RR^(m times n)$ with $"rank"(bold(D)) = r$:
+  $
+    1 <= "spark"(bold(D)) <= r + 1
+  $
+] <prop:spark_rank>
+
+*Proof:*
+The lower bound follows from the definition. For the upper bound, consider that any $r+1$ columns must be linearly dependent in an $r$-dimensional space, hence $"spark"(bold(D)) <= r + 1$.
+
+#lemma("Spark and Homogeneous Solutions")[
+  If $bold(D) bold(x) = bold(0)$ has a solution $bold(x) != bold(0)$, then:
+  $
+    "spark"(bold(D)) <= norm(bold(x))_0
+  $
+] <lem:spark_homogeneous>
+
+*Proof:*
+If $bold(D) bold(x) = bold(0)$ with $bold(x) != bold(0)$, then $sum_(i in "supp"(bold(x))) x_i bold(d)_i = bold(0)$, showing that the columns ${bold(d)_i : i in "supp"(bold(x))}$ are linearly dependent. By definition of spark, $"spark"(bold(D)) <= |"supp"(bold(x))| = norm(bold(x))_0$.
