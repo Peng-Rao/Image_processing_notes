@@ -5,641 +5,448 @@
 \usepackage[mathscr]{euscript}
 \usepackage[T1]{fontenc}
 \usepackage{microtype}
-\usepackage{tikz}
-\usepackage{algorithm}
-\usepackage{algorithmic}
-
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
 
-% Mathematical notation
+% Custom commands for notation consistency
 \renewcommand{\vec}[1]{\mathbf{#1}}
-\DeclareMathOperator{\Var}{Var}
-\DeclareMathOperator{\argmin}{argmin}
-\DeclareMathOperator{\argmax}{argmax}
+\DeclareMathOperator{\prox}{prox}
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\argmax}{arg\,max}
 \DeclareMathOperator{\sign}{sign}
-\DeclareMathOperator{\supp}{supp}
-\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\soft}{soft}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+\newcommand{\R}{\mathbb{R}}
 
 % Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{lemma}[theorem]{Lemma}
 \newtheorem{proposition}[theorem]{Proposition}
 \newtheorem{corollary}[theorem]{Corollary}
-\newtheorem{definition}[theorem]{Definition}
-\newtheorem{remark}[theorem]{Remark}
-\newtheorem{example}[theorem]{Example}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{example}{Example}[section]
 
-% Title and author
-\title{\textbf{Self-Similarity Based Image Denoising: Theory and Applications}}
-\author{Advanced Image Processing Lecture Notes}
+\title{Proximal Gradient Methods and Iterative Soft Thresholding:\\
+A Comprehensive Analysis for Sparse Optimization}
+\author{Lecture Notes}
 \date{\today}
 
 \begin{document}
-
 \maketitle
 
-\begin{abstract}
-    This document presents a comprehensive treatment of self-similarity based image denoising methods, focusing on non-local means and Block-Matching 3D (BM3D) algorithms. We explore the theoretical foundations, mathematical formulations, and practical implementation details of these state-of-the-art denoising techniques. The notes emphasize the exploitation of natural image statistics through patch-based similarity measures and collaborative filtering approaches.
-\end{abstract}
-
 \tableofcontents
-
 \newpage
 
-% NOTE: This section introduces the fundamental concepts and motivation
-\section{Introduction to Self-Similarity in Image Processing}
-\label{sec:introduction}
+%==============================================================================
+\section{Introduction and Motivation}
+%==============================================================================
 
-\subsection{Mathematical Framework for Image Denoising}
-\label{subsec:framework}
+\subsection{The Sparse Recovery Problem}
 
-The image denoising problem can be formulated as follows. Given a noisy observation $y$, we seek to recover the underlying clean image $x$ from the degraded measurement:
+The fundamental challenge in modern signal processing and machine learning involves recovering sparse representations from noisy observations. Consider the linear model:
+\begin{equation}
+    \vec{y} = \vec{D}\vec{x} + \vec{\epsilon}
+    \label{eq:linear_model}
+\end{equation}
+where $\vec{y} \in \R^m$ represents observed measurements, $\vec{D} \in \R^{m \times n}$ is a dictionary matrix (often overcomplete with $n > m$), $\vec{x} \in \R^n$ is the sparse coefficient vector we seek to recover, and $\vec{\epsilon} \in \R^m$ denotes additive noise.
+
+The sparsity constraint fundamentally transforms this inverse problem. Rather than seeking any solution satisfying the data fidelity constraint, we specifically desire solutions where most components of $\vec{x}$ equal zero. This preference leads to the basis pursuit denoising (BPDN) formulation:
 
 \begin{equation}
-    \label{eq:observation_model}
-    y = x + \eta
+    \min_{\vec{x} \in \R^n} \frac{1}{2}\norm{\vec{D}\vec{x} - \vec{y}}_2^2 + \lambda\norm{\vec{x}}_1
+    \label{eq:bpdn}
 \end{equation}
 
-where $\eta$ represents additive white Gaussian noise with zero mean and known variance $\sigma^2$:
+\subsection{Mathematical Challenges}
 
-\begin{equation}
-    \label{eq:noise_model}
-    \eta \sim \mathcal{N}(0, \sigma^2 I)
-\end{equation}
-
-% NOTE: The following derivation shows why simple averaging fails
-\paragraph{Limitations of Simple Averaging}
-Consider the classical approach of estimating pixel intensities through local averaging. For a pixel at location $(i,j)$, a naive estimate would be:
-
-\begin{equation}
-    \label{eq:simple_average}
-    \hat{x}_{i,j} = \frac{1}{|U_{i,j}|} \sum_{(k,l) \in U_{i,j}} y_{k,l}
-\end{equation}
-
-where $U_{i,j}$ denotes a neighborhood around pixel $(i,j)$, and $|U_{i,j}|$ is its cardinality.
-
-\begin{remark}
-    This approach is equivalent to convolution with a normalized box kernel:
-    \begin{equation}
-        \hat{x} = y * h
-    \end{equation}
-    where $h$ is the box kernel with support $U_{i,j}$.
-\end{remark}
-
-\subsection{Fundamental Limitations of Local Smoothing}
-\label{subsec:limitations}
-
-The primary limitation of local averaging becomes apparent near image discontinuities. Consider an ideal edge scenario where:
-
-\begin{equation}
-    x_{i,j} = \begin{cases}
-        a & \text{if } (i,j) \in \Omega_1 \\
-        b & \text{if } (i,j) \in \Omega_2
-    \end{cases}
-\end{equation}
-
-where $\Omega_1$ and $\Omega_2$ are disjoint regions separated by an edge, and $a \neq b$.
-
-\paragraph{Edge Degradation Analysis}
-For a pixel $(i,j)$ near the edge boundary, the local average becomes:
+The optimization problem \eqref{eq:bpdn} presents a fundamental mathematical challenge: while the data fidelity term $\frac{1}{2}\norm{\vec{D}\vec{x} - \vec{y}}_2^2$ is smooth and convex with Lipschitz continuous gradient, the $\ell_1$ regularization term $\lambda\norm{\vec{x}}_1$ is non-differentiable at the origin. Specifically:
 
 \begin{align}
-    \hat{x}_{i,j} & = \frac{1}{|U_{i,j}|} \left( \sum_{(k,l) \in U_{i,j} \cap \Omega_1} y_{k,l} + \sum_{(k,l) \in U_{i,j} \cap \Omega_2} y_{k,l} \right) \\
-                  & \approx \frac{|\Omega_1 \cap U_{i,j}|}{|U_{i,j}|} a + \frac{|\Omega_2 \cap U_{i,j}|}{|U_{i,j}|} b
+    \nabla_{\vec{x}} \left[\frac{1}{2}\norm{\vec{D}\vec{x} - \vec{y}}_2^2\right] & = \vec{D}^T(\vec{D}\vec{x} - \vec{y}) \quad \text{(well-defined everywhere)} \\
+    \partial \norm{\vec{x}}_1                                                    & = \begin{cases}
+                                                                                         \{\sign(\vec{x})\} & \text{if } \vec{x} \neq \vec{0} \\
+                                                                                         [-1,1]^n           & \text{if } \vec{x} = \vec{0}
+                                                                                     \end{cases}
 \end{align}
 
-This results in a blurred edge transition, motivating the need for adaptive filtering strategies.
+% NOTE: The subdifferential notation emphasizes the non-smooth nature of the l1 norm
+
+This non-differentiability precludes direct application of gradient descent methods, necessitating more sophisticated optimization techniques.
 
 \newpage
+%==============================================================================
+\section{Mathematical Foundations: Convex Analysis and Majorization}
+%==============================================================================
 
-% NOTE: This section introduces the core concept of self-similarity
-\section{Non-Local Means Algorithm}
-\label{sec:nlm}
+\subsection{Convexity and Smoothness}
 
-\subsection{Theoretical Foundation}
-\label{subsec:nlm_theory}
-
-The Non-Local Means (NLM) algorithm addresses the limitations of local averaging by exploiting the \textit{self-similarity} property of natural images. The key insight is that similar patches exist throughout the image, not just in local neighborhoods.
-
-\begin{definition}[Self-Similarity Prior]
-    \label{def:self_similarity}
-    For a natural image $x$, there exist multiple patches $\{P_k\}$ such that:
+\begin{definition}[Convex Function]
+    A function $f: \R^n \to \R \cup \{+\infty\}$ is \textit{convex} if for all $\vec{x}, \vec{y} \in \operatorname{dom}(f)$ and $\theta \in [0,1]$:
     \begin{equation}
-        \|P_i - P_j\|_2 < \epsilon
+        f(\theta\vec{x} + (1-\theta)\vec{y}) \leq \theta f(\vec{x}) + (1-\theta)f(\vec{y})
     \end{equation}
-    for some small threshold $\epsilon > 0$, where $P_k$ represents a patch extracted from the image.
 \end{definition}
 
-\subsection{Mathematical Formulation}
-\label{subsec:nlm_formulation}
-
-The NLM estimate for pixel $(i,j)$ is given by:
-
-\begin{equation}
-    \label{eq:nlm_estimate}
-    \hat{x}_{i,j} = \sum_{(k,l) \in S_{i,j}} w_{i,j}(k,l) \cdot y_{k,l}
-\end{equation}
-
-where $S_{i,j}$ represents the search window around pixel $(i,j)$, and $w_{i,j}(k,l)$ are the similarity weights.
-
-\paragraph{Weight Computation}
-The similarity weights are computed based on patch distances:
-
-\begin{equation}
-    \label{eq:nlm_weights}
-    w_{i,j}(k,l) = \frac{1}{Z_{i,j}} \exp\left(-\frac{d^2(P_{i,j}, P_{k,l})}{h^2}\right)
-\end{equation}
-
-where:
-\begin{itemize}
-    \item $P_{i,j}$ and $P_{k,l}$ are patches centered at $(i,j)$ and $(k,l)$ respectively
-    \item $d^2(P_{i,j}, P_{k,l})$ is the squared Euclidean distance between patches
-    \item $h$ is the filtering parameter controlling the decay rate
-    \item $Z_{i,j}$ is the normalization constant ensuring $\sum w_{i,j}(k,l) = 1$
-\end{itemize}
-
-\subsection{Patch Distance Computation}
-\label{subsec:patch_distance}
-
-The patch distance is computed as:
-
-\begin{equation}
-    \label{eq:patch_distance}
-    d^2(P_{i,j}, P_{k,l}) = \frac{1}{|P|} \sum_{(u,v) \in P} |y_{i+u,j+v} - y_{k+u,l+v}|^2
-\end{equation}
-
-where $P$ represents the patch domain and $|P|$ is the number of pixels in the patch.
-
-\paragraph{Noise-Aware Distance}
-In the presence of noise, the distance can be corrected as:
-
-\begin{equation}
-    \label{eq:noise_corrected_distance}
-    d^2_{\text{corrected}}(P_{i,j}, P_{k,l}) = \max\left(d^2(P_{i,j}, P_{k,l}) - 2\sigma^2, 0\right)
-\end{equation}
-
-This correction accounts for the noise contribution to the patch distance.
-
-\subsection{Normalization and Properties}
-\label{subsec:nlm_properties}
-
-The normalization constant is given by:
-
-\begin{equation}
-    \label{eq:normalization}
-    Z_{i,j} = \sum_{(k,l) \in S_{i,j}} \exp\left(-\frac{d^2(P_{i,j}, P_{k,l})}{h^2}\right)
-\end{equation}
-
-\begin{theorem}[NLM Consistency]
-    \label{thm:nlm_consistency}
-    For a noiseless image, the NLM estimate satisfies:
+\begin{definition}[L-Smooth Function]
+    A differentiable function $f: \R^n \to \R$ is \textit{L-smooth} if its gradient is Lipschitz continuous with constant $L > 0$:
     \begin{equation}
-        \lim_{\sigma \to 0} \hat{x}_{i,j} = x_{i,j}
+        \norm{\nabla f(\vec{x}) - \nabla f(\vec{y})}_2 \leq L\norm{\vec{x} - \vec{y}}_2 \quad \forall \vec{x}, \vec{y} \in \R^n
+    \end{equation}
+\end{definition}
+
+\begin{theorem}[Descent Lemma]\label{thm:descent}
+    If $f: \R^n \to \R$ is convex and L-smooth, then for all $\vec{x}, \vec{y} \in \R^n$:
+    \begin{equation}
+        f(\vec{y}) \leq f(\vec{x}) + \inner{\nabla f(\vec{x})}{\vec{y} - \vec{x}} + \frac{L}{2}\norm{\vec{y} - \vec{x}}_2^2
+        \label{eq:descent_lemma}
     \end{equation}
 \end{theorem}
 
 \begin{proof}[Proof Sketch]
-    As $\sigma \to 0$, the patch distances approach their true values, and the weight distribution becomes increasingly concentrated around patches identical to the reference patch.
+    The proof leverages the fundamental theorem of calculus and Lipschitz continuity:
+    \begin{align}
+        f(\vec{y}) - f(\vec{x}) & = \int_0^1 \inner{\nabla f(\vec{x} + t(\vec{y} - \vec{x}))}{\vec{y} - \vec{x}} dt                                                                    \\
+                                & = \inner{\nabla f(\vec{x})}{\vec{y} - \vec{x}} + \int_0^1 \inner{\nabla f(\vec{x} + t(\vec{y} - \vec{x})) - \nabla f(\vec{x})}{\vec{y} - \vec{x}} dt
+    \end{align}
+    Applying Cauchy-Schwarz and the L-smoothness property completes the proof.
 \end{proof}
 
-\newpage
+\subsection{Majorization-Minimization Framework}
 
-% NOTE: This section provides implementation details and practical considerations
-\section{Implementation Details and Practical Considerations}
-\label{sec:implementation}
+The majorization-minimization (MM) principle provides a general framework for iterative optimization:
 
-\subsection{Algorithmic Framework}
-\label{subsec:algorithm}
+\begin{definition}[Majorizer]
+    A function $Q_{\vec{x}}(\vec{z})$ is a \textit{majorizer} of $f$ at point $\vec{x}$ if:
+    \begin{enumerate}
+        \item $Q_{\vec{x}}(\vec{z}) \geq f(\vec{z})$ for all $\vec{z} \in \operatorname{dom}(f)$ (global upper bound)
+        \item $Q_{\vec{x}}(\vec{x}) = f(\vec{x})$ (tangency condition)
+    \end{enumerate}
+\end{definition}
 
-\begin{algorithm}
-    \caption{Non-Local Means Algorithm}
-    \label{alg:nlm}
-    \begin{algorithmic}[1]
-        \REQUIRE Noisy image $y$, patch size $p$, search window size $s$, filtering parameter $h$
-        \ENSURE Denoised image $\hat{x}$
-        \FOR{each pixel $(i,j)$ in the image}
-        \STATE Initialize weight matrix $W = 0$
-        \STATE Define search window $S_{i,j}$ of size $s \times s$
-        \FOR{each pixel $(k,l)$ in $S_{i,j}$}
-        \STATE Extract patches $P_{i,j}$ and $P_{k,l}$ of size $p \times p$
-        \STATE Compute distance $d^2(P_{i,j}, P_{k,l})$ using Eq.~\ref{eq:patch_distance}
-        \STATE Compute weight $w_{i,j}(k,l)$ using Eq.~\ref{eq:nlm_weights}
-        \STATE $W(k,l) = w_{i,j}(k,l)$
-        \ENDFOR
-        \STATE Normalize weights: $W = W / \sum W$
-        \STATE Compute estimate: $\hat{x}_{i,j} = \sum_{(k,l)} W(k,l) \cdot y_{k,l}$
-        \ENDFOR
-    \end{algorithmic}
-\end{algorithm}
-
-\subsection{Boundary Handling}
-\label{subsec:boundary}
-
-Near image boundaries, patches may extend beyond the image domain. Common strategies include:
-
-\begin{enumerate}
-    \item \textbf{Symmetric Padding}: Reflect image content across boundaries
-    \item \textbf{Periodic Padding}: Wrap image content periodically
-    \item \textbf{Zero Padding}: Extend with zeros (not recommended)
-\end{enumerate}
-
-The symmetric padding approach is preferred as it maintains image statistics:
-
+For L-smooth convex functions, the descent lemma immediately provides a quadratic majorizer:
 \begin{equation}
-    \tilde{x}_{i,j} = \begin{cases}
-        x_{i,j}    & \text{if } (i,j) \text{ is inside image}   \\
-        x_{2N-i,j} & \text{if } i > N \text{ (bottom boundary)} \\
-        x_{i,2M-j} & \text{if } j > M \text{ (right boundary)}
-    \end{cases}
+    Q_{\vec{x}}(\vec{z}) = f(\vec{x}) + \inner{\nabla f(\vec{x})}{\vec{z} - \vec{x}} + \frac{L}{2}\norm{\vec{z} - \vec{x}}_2^2
+    \label{eq:quadratic_majorizer}
 \end{equation}
 
-\subsection{Parameter Selection}
-\label{subsec:parameters}
+\begin{proposition}[MM Algorithm Convergence]
+    The iterative scheme:
+    \begin{equation}
+        \vec{x}_{k+1} = \argmin_{\vec{z}} Q_{\vec{x}_k}(\vec{z})
+    \end{equation}
+    generates a sequence $\{\vec{x}_k\}$ with monotonically decreasing function values: $f(\vec{x}_{k+1}) \leq f(\vec{x}_k)$.
+\end{proposition}
 
-\paragraph{Typical Parameter Values}
-\begin{itemize}
-    \item Patch size: $p = 7 \times 7$ (provides good balance between detail and computational cost)
-    \item Search window: $s = 21 \times 21$ (sufficient for finding similar patches)
-    \item Filtering parameter: $h = 10\sigma$ (empirically determined)
-\end{itemize}
-
-\paragraph{Adaptive Parameter Selection}
-The filtering parameter can be adapted based on local image characteristics:
-
-\begin{equation}
-    h_{i,j} = \alpha \cdot \sigma \cdot \sqrt{\text{LocalVariance}(P_{i,j})}
-\end{equation}
-
-where $\alpha$ is a scaling factor and $\text{LocalVariance}$ measures local image activity.
+% NOTE: The MM framework generalizes gradient descent and enables handling of non-smooth terms
 
 \newpage
+%==============================================================================
+\section{Proximal Gradient Methods}
+%==============================================================================
 
-% NOTE: This section introduces the advanced BM3D algorithm
-\section{Block-Matching 3D (BM3D) Algorithm}
-\label{sec:bm3d}
+\subsection{The Composite Optimization Problem}
 
-\subsection{Overview and Motivation}
-\label{subsec:bm3d_overview}
-
-The Block-Matching 3D (BM3D) algorithm extends the self-similarity concept by combining it with sparsity-based denoising. The key innovations include:
-
-\begin{enumerate}
-    \item \textbf{Grouping}: Collect similar patches into 3D arrays
-    \item \textbf{Collaborative Filtering}: Process groups jointly using 3D transforms
-    \item \textbf{Aggregation}: Combine processed patches back into the image
-\end{enumerate}
-
-\subsection{Mathematical Framework}
-\label{subsec:bm3d_framework}
-
-\paragraph{Patch Grouping}
-For a reference patch $P_{i,j}$, we define the group $G_{i,j}$ as:
-
+Consider the general composite optimization problem:
 \begin{equation}
-    \label{eq:group_definition}
-    G_{i,j} = \{P_{k,l} : d^2(P_{i,j}, P_{k,l}) < \tau\}
+    \min_{\vec{x} \in \R^n} F(\vec{x}) := f(\vec{x}) + g(\vec{x})
+    \label{eq:composite}
 \end{equation}
-
-where $\tau$ is a similarity threshold.
-
-\paragraph{3D Array Construction}
-The group is arranged as a 3D array $\mathcal{G} \in \mathbb{R}^{p \times p \times K}$, where $K = |G_{i,j}|$ is the number of patches in the group.
-
-\subsection{3D Transform Domain Processing}
-\label{subsec:3d_transform}
-
-The BM3D algorithm applies a 3D transform to exploit both spatial and inter-patch correlations:
-
-\begin{equation}
-    \label{eq:3d_transform}
-    \mathcal{T} = \mathcal{W}_{3D} \cdot \mathcal{G}
-\end{equation}
-
-where $\mathcal{W}_{3D}$ represents the 3D transform operator.
-
-\paragraph{Separable Transform}
-The 3D transform is typically implemented as a separable transformation:
-
-\begin{align}
-    \mathcal{T} & = \mathcal{W}_1 \cdot (\mathcal{W}_2 \cdot (\mathcal{W}_3 \cdot \mathcal{G}))   \\
-                & = (\mathcal{W}_1 \otimes \mathcal{W}_2 \otimes \mathcal{W}_3) \cdot \mathcal{G}
-\end{align}
-
-where $\mathcal{W}_1$ and $\mathcal{W}_2$ are 2D transforms (e.g., DCT) applied to each patch, and $\mathcal{W}_3$ is a 1D transform applied across the grouping dimension.
-
-\subsection{Hard Thresholding Stage}
-\label{subsec:hard_thresholding}
-
-In the first stage, BM3D applies hard thresholding to the transform coefficients:
-
-\begin{equation}
-    \label{eq:hard_threshold}
-    \hat{\mathcal{T}} = \mathcal{H}_{\lambda}(\mathcal{T})
-\end{equation}
-
-where the hard thresholding operator is defined as:
-
-\begin{equation}
-    \mathcal{H}_{\lambda}(t) = \begin{cases}
-        t & \text{if } |t| > \lambda    \\
-        0 & \text{if } |t| \leq \lambda
-    \end{cases}
-\end{equation}
-
-\paragraph{Threshold Selection}
-The threshold is typically chosen as:
-
-\begin{equation}
-    \lambda = \beta \cdot \sigma
-\end{equation}
-
-where $\beta$ is a parameter controlling the aggressiveness of denoising (typically $\beta = 2.7$).
-
-\subsection{Collaborative Filtering Stage}
-\label{subsec:collaborative_filtering}
-
-The second stage performs collaborative filtering using both the noisy and first-stage estimates:
-
-\begin{equation}
-    \label{eq:collaborative_filter}
-    \hat{\mathcal{T}}^{(2)} = \frac{|\mathcal{T}^{(1)}|^2}{|\mathcal{T}^{(1)}|^2 + \sigma^2} \cdot \mathcal{T}^{(0)}
-\end{equation}
-
 where:
 \begin{itemize}
-    \item $\mathcal{T}^{(0)}$ represents the transform of the noisy group
-    \item $\mathcal{T}^{(1)}$ represents the transform of the first-stage estimate
-    \item $|\cdot|^2$ denotes element-wise squared magnitude
+    \item $f: \R^n \to \R$ is convex and L-smooth (differentiable component)
+    \item $g: \R^n \to \R \cup \{+\infty\}$ is convex but possibly non-smooth (regularizer)
 \end{itemize}
+
+\subsection{Proximal Mapping: The Key Innovation}
+
+\begin{definition}[Proximal Mapping]\label{def:prox}
+    The \textit{proximal mapping} of a convex function $g$ at point $\vec{v}$ with parameter $\gamma > 0$ is:
+    \begin{equation}
+        \prox_{\gamma g}(\vec{v}) := \argmin_{\vec{z} \in \R^n} \left\{g(\vec{z}) + \frac{1}{2\gamma}\norm{\vec{z} - \vec{v}}_2^2\right\}
+        \label{eq:prox_def}
+    \end{equation}
+\end{definition}
 
 \begin{remark}
-    This is a Wiener filter formulation that optimally combines the noisy observations with the first-stage estimate based on their respective reliabilities.
+    The proximal mapping balances two objectives:
+    \begin{enumerate}
+        \item Minimizing the function $g$ (the original objective)
+        \item Staying close to the reference point $\vec{v}$ (stability/regularization)
+    \end{enumerate}
+    The parameter $\gamma$ controls this trade-off: larger $\gamma$ emphasizes minimizing $g$, while smaller $\gamma$ keeps the solution closer to $\vec{v}$.
 \end{remark}
 
-\subsection{Aggregation and Weighting}
-\label{subsec:aggregation}
+\subsection{Derivation of the Proximal Gradient Algorithm}
 
-After processing, patches must be aggregated back into the image. Due to overlapping patches, multiple estimates exist for each pixel:
+Starting from the majorizer \eqref{eq:quadratic_majorizer} for the smooth component $f$:
 
-\begin{equation}
-    \label{eq:aggregation}
-    \hat{x}_{i,j} = \frac{\sum_{G \ni (i,j)} w_G \cdot \hat{x}_{i,j}^{(G)}}{\sum_{G \ni (i,j)} w_G}
-\end{equation}
-
-where the sum is over all groups $G$ containing pixel $(i,j)$.
-
-\paragraph{Sparsity-Aware Weighting}
-The weights are chosen based on the sparsity of the processed group:
-
-\begin{equation}
-    \label{eq:sparsity_weight}
-    w_G = \frac{1}{\|\mathcal{T}_G\|_0}
-\end{equation}
-
-where $\|\cdot\|_0$ denotes the number of non-zero coefficients.
-
-\newpage
-
-% NOTE: This section provides practical implementation guidance
-\section{Implementation Guidelines and Parameter Tuning}
-\label{sec:practical}
-
-\subsection{Computational Complexity Analysis}
-\label{subsec:complexity}
-
-\paragraph{Non-Local Means Complexity}
-The computational complexity of NLM is $O(N^2 \cdot s^2 \cdot p^2)$ where:
-\begin{itemize}
-    \item $N^2$ is the number of pixels in the image
-    \item $s^2$ is the search window size
-    \item $p^2$ is the patch size
-\end{itemize}
-
-\paragraph{BM3D Complexity}
-BM3D has complexity $O(N^2 \cdot s^2 \cdot p^2 \cdot \log(K))$ where $K$ is the average group size.
-
-\subsection{Optimization Strategies}
-\label{subsec:optimization}
-
-\paragraph{Fast Patch Matching}
-\begin{enumerate}
-    \item \textbf{Integral Images}: Use integral images for rapid patch norm computation
-    \item \textbf{Early Termination}: Stop patch comparison when distance exceeds threshold
-    \item \textbf{Hierarchical Search}: Use coarse-to-fine matching strategies
-\end{enumerate}
-
-\paragraph{Memory Optimization}
-\begin{itemize}
-    \item Process image in overlapping blocks to reduce memory requirements
-    \item Use sliding window techniques for patch extraction
-    \item Implement in-place transformations where possible
-\end{itemize}
-
-\subsection{Quality Assessment Metrics}
-\label{subsec:quality_metrics}
-
-\paragraph{Objective Metrics}
 \begin{align}
-    \text{PSNR} & = 10 \log_{10} \frac{255^2}{\text{MSE}}                                                                    \\
-    \text{SSIM} & = \frac{(2\mu_x\mu_y + c_1)(2\sigma_{xy} + c_2)}{(\mu_x^2 + \mu_y^2 + c_1)(\sigma_x^2 + \sigma_y^2 + c_2)}
+    F(\vec{z}) & = f(\vec{z}) + g(\vec{z})                                                                                             \\
+               & \leq f(\vec{x}) + \inner{\nabla f(\vec{x})}{\vec{z} - \vec{x}} + \frac{L}{2}\norm{\vec{z} - \vec{x}}_2^2 + g(\vec{z})
 \end{align}
 
-where MSE is the mean squared error and SSIM parameters are computed from local statistics.
+Setting $\gamma = 1/L$ and minimizing the right-hand side:
+\begin{align}
+    \vec{x}_{k+1} & = \argmin_{\vec{z}} \left\{f(\vec{x}_k) + \inner{\nabla f(\vec{x}_k)}{\vec{z} - \vec{x}_k} + \frac{1}{2\gamma}\norm{\vec{z} - \vec{x}_k}_2^2 + g(\vec{z})\right\} \\
+                  & = \argmin_{\vec{z}} \left\{\frac{1}{2\gamma}\norm{\vec{z} - \vec{x}_k}_2^2 + \inner{\nabla f(\vec{x}_k)}{\vec{z}} + g(\vec{z})\right\}
+    \intertext{Completing the square:}
+                  & = \argmin_{\vec{z}} \left\{\frac{1}{2\gamma}\norm{\vec{z} - (\vec{x}_k - \gamma\nabla f(\vec{x}_k))}_2^2 + g(\vec{z})\right\}                                     \\
+                  & = \prox_{\gamma g}(\vec{x}_k - \gamma\nabla f(\vec{x}_k))
+\end{align}
+
+\begin{theorem}[Proximal Gradient Algorithm]
+    The iterative scheme:
+    \begin{equation}
+        \vec{x}_{k+1} = \prox_{\gamma g}(\vec{x}_k - \gamma\nabla f(\vec{x}_k))
+        \label{eq:prox_grad}
+    \end{equation}
+    converges to a minimizer of $F = f + g$ when $f$ is convex and L-smooth, $g$ is convex, and $0 < \gamma \leq 1/L$.
+\end{theorem}
+
+% NOTE: This algorithm decouples the smooth and non-smooth components elegantly
 
 \newpage
+%==============================================================================
+\section{Computing the Proximal Mapping of the $\ell_1$ Norm}
+%==============================================================================
 
-% NOTE: This section discusses advanced topics and extensions
-\section{Advanced Topics and Extensions}
-\label{sec:advanced}
+\subsection{Problem Formulation}
 
-\subsection{Adaptive Patch Sizes}
-\label{subsec:adaptive_patches}
-
-Recent research has explored adaptive patch sizing based on local image characteristics:
-
+For the $\ell_1$ regularization term $g(\vec{x}) = \lambda\norm{\vec{x}}_1$, we need to compute:
 \begin{equation}
-    p_{i,j} = f(\text{LocalComplexity}(i,j))
+    \prox_{\gamma\lambda\norm{\cdot}_1}(\vec{v}) = \argmin_{\vec{z}} \left\{\lambda\norm{\vec{z}}_1 + \frac{1}{2\gamma}\norm{\vec{z} - \vec{v}}_2^2\right\}
+    \label{eq:l1_prox_problem}
 \end{equation}
 
-where $f$ is a mapping from complexity measures to patch sizes.
+\subsection{Separability and Component-wise Solution}
 
-\subsection{Multi-Scale Processing}
-\label{subsec:multiscale}
+A crucial observation is that both terms in \eqref{eq:l1_prox_problem} are separable:
+\begin{align}
+    \lambda\norm{\vec{z}}_1                       & = \lambda\sum_{i=1}^n |z_i|                   \\
+    \frac{1}{2\gamma}\norm{\vec{z} - \vec{v}}_2^2 & = \frac{1}{2\gamma}\sum_{i=1}^n (z_i - v_i)^2
+\end{align}
 
-Multi-scale approaches decompose the image into different resolution levels:
-
+This separability allows us to solve for each component independently:
 \begin{equation}
-    \hat{x} = \sum_{l=0}^{L} \mathcal{U}_l(\mathcal{D}_l(\hat{x}_l))
+    [\prox_{\gamma\lambda\norm{\cdot}_1}(\vec{v})]_i = \argmin_{z_i \in \R} \left\{\lambda|z_i| + \frac{1}{2\gamma}(z_i - v_i)^2\right\}
+    \label{eq:scalar_problem}
 \end{equation}
 
-where $\mathcal{D}_l$ and $\mathcal{U}_l$ are downsampling and upsampling operators.
+\subsection{Solving the Scalar Problem}
 
-\subsection{Learning-Based Enhancements}
-\label{subsec:learning}
+For the scalar optimization problem \eqref{eq:scalar_problem}, we consider three cases:
 
-Modern approaches incorporate learned components:
+\subsubsection{Case 1: $z_i > 0$}
+The objective becomes:
+\begin{equation}
+    h(z_i) = \lambda z_i + \frac{1}{2\gamma}(z_i - v_i)^2
+\end{equation}
+Taking the derivative and setting to zero:
+\begin{align}
+    \frac{\partial h}{\partial z_i} & = \lambda + \frac{1}{\gamma}(z_i - v_i) = 0 \\
+    \Rightarrow z_i^*               & = v_i - \gamma\lambda
+\end{align}
+This solution is valid only if $z_i^* > 0$, i.e., $v_i > \gamma\lambda$.
 
-\begin{itemize}
-    \item \textbf{Learned Similarity Metrics}: Replace Euclidean distance with learned metrics
-    \item \textbf{Adaptive Thresholding}: Learn threshold functions from data
-    \item \textbf{Neural Patch Matching}: Use neural networks for patch similarity assessment
-\end{itemize}
+\subsubsection{Case 2: $z_i < 0$}
+The objective becomes:
+\begin{equation}
+    h(z_i) = -\lambda z_i + \frac{1}{2\gamma}(z_i - v_i)^2
+\end{equation}
+Similarly:
+\begin{align}
+    \frac{\partial h}{\partial z_i} & = -\lambda + \frac{1}{\gamma}(z_i - v_i) = 0 \\
+    \Rightarrow z_i^*               & = v_i + \gamma\lambda
+\end{align}
+Valid when $z_i^* < 0$, i.e., $v_i < -\gamma\lambda$.
 
-\subsection{Applications Beyond Denoising}
-\label{subsec:applications}
+\subsubsection{Case 3: $z_i = 0$}
+By the subdifferential optimality condition, $0 \in \partial h(0)$:
+\begin{equation}
+    0 \in \lambda[-1,1] + \frac{1}{\gamma}(0 - v_i)
+\end{equation}
+This holds when $|v_i| \leq \gamma\lambda$.
 
-Self-similarity principles extend to various image processing tasks:
+\subsection{The Soft Thresholding Operator}
+
+Combining all cases yields the \textit{soft thresholding operator}:
+
+\begin{theorem}[Soft Thresholding]
+    The proximal mapping of the $\ell_1$ norm is given component-wise by:
+    \begin{equation}
+        [\prox_{\gamma\lambda\norm{\cdot}_1}(\vec{v})]_i = \soft_{\gamma\lambda}(v_i) := \sign(v_i)\max\{|v_i| - \gamma\lambda, 0\}
+        \label{eq:soft_threshold}
+    \end{equation}
+    Equivalently:
+    \begin{equation}
+        \soft_{\gamma\lambda}(v_i) = \begin{cases}
+            v_i - \gamma\lambda & \text{if } v_i > \gamma\lambda      \\
+            0                   & \text{if } |v_i| \leq \gamma\lambda \\
+            v_i + \gamma\lambda & \text{if } v_i < -\gamma\lambda
+        \end{cases}
+    \end{equation}
+\end{theorem}
+
+\begin{remark}[Comparison with Hard Thresholding]
+    The soft thresholding operator differs fundamentally from hard thresholding:
+    \begin{itemize}
+        \item \textbf{Hard thresholding}: $\mathcal{H}_\tau(v) = v \cdot \mathbb{1}_{|v| > \tau}$ (discontinuous, preserves large values)
+        \item \textbf{Soft thresholding}: $\soft_\tau(v) = \sign(v)\max\{|v|-\tau, 0\}$ (continuous, shrinks all values)
+    \end{itemize}
+\end{remark}
+
+% NOTE: Soft thresholding induces sparsity while maintaining continuity
+
+\newpage
+%==============================================================================
+\section{The ISTA Algorithm: Iterative Soft Thresholding}
+%==============================================================================
+
+\subsection{Algorithm Formulation}
+
+Combining the proximal gradient framework with the soft thresholding operator yields:
+
+\begin{theorem}[ISTA for Basis Pursuit Denoising]
+    The Iterative Soft Thresholding Algorithm (ISTA) for solving:
+    \begin{equation}
+        \min_{\vec{x}} \frac{1}{2}\norm{\vec{D}\vec{x} - \vec{y}}_2^2 + \lambda\norm{\vec{x}}_1
+    \end{equation}
+    is given by:
+    \begin{equation}
+        \boxed{\vec{x}_{k+1} = \soft_{\gamma\lambda}(\vec{x}_k - \gamma\vec{D}^T(\vec{D}\vec{x}_k - \vec{y}))}
+        \label{eq:ista}
+    \end{equation}
+    where $\gamma \in (0, 1/\norm{\vec{D}^T\vec{D}}_2]$ is the step size.
+\end{theorem}
+
+\subsection{Algorithm Implementation}
+
+\begin{example}[ISTA Implementation]
+    The algorithm can be implemented efficiently as:
+    \begin{enumerate}
+        \item \textbf{Precomputation}:
+              \begin{itemize}
+                  \item Compute $\vec{D}^T\vec{D}$ and $\vec{D}^T\vec{y}$ (one-time cost)
+                  \item Estimate $L = \norm{\vec{D}^T\vec{D}}_2$ via power iteration
+              \end{itemize}
+
+        \item \textbf{Iteration}: For $k = 0, 1, 2, \ldots$
+              \begin{align}
+                  \vec{g}_k     & = \vec{D}^T(\vec{D}\vec{x}_k - \vec{y}) \quad \text{(gradient computation)} \\
+                  \vec{z}_k     & = \vec{x}_k - \gamma\vec{g}_k \quad \text{(gradient descent step)}          \\
+                  \vec{x}_{k+1} & = \soft_{\gamma\lambda}(\vec{z}_k) \quad \text{(soft thresholding)}
+              \end{align}
+    \end{enumerate}
+\end{example}
+
+\subsection{Convergence Analysis}
+
+\begin{theorem}[ISTA Convergence Rate]
+    Under the conditions:
+    \begin{itemize}
+        \item $f(\vec{x}) = \frac{1}{2}\norm{\vec{D}\vec{x} - \vec{y}}_2^2$ is convex and L-smooth
+        \item $g(\vec{x}) = \lambda\norm{\vec{x}}_1$ is convex
+        \item Step size $\gamma \in (0, 1/L]$
+    \end{itemize}
+    ISTA converges with rate:
+    \begin{equation}
+        F(\vec{x}_k) - F(\vec{x}^*) \leq \frac{\norm{\vec{x}_0 - \vec{x}^*}_2^2}{2\gamma k}
+    \end{equation}
+    where $\vec{x}^*$ is an optimal solution.
+\end{theorem}
+
+\subsection{Extensions and Generalizations}
+
+The proximal gradient framework extends naturally to other regularizers:
+
+\begin{example}[Group Lasso]
+    For group sparsity with $g(\vec{x}) = \sum_{g \in \mathcal{G}} \lambda_g\norm{\vec{x}_g}_2$:
+    \begin{equation}
+        [\prox_{\gamma g}(\vec{v})]_g = \max\left\{1 - \frac{\gamma\lambda_g}{\norm{\vec{v}_g}_2}, 0\right\}\vec{v}_g
+    \end{equation}
+\end{example}
+
+\begin{example}[Nuclear Norm]
+    For low-rank matrix recovery with $g(\vec{X}) = \lambda\norm{\vec{X}}_*$:
+    \begin{equation}
+        \prox_{\gamma\lambda\norm{\cdot}_*}(\vec{V}) = \vec{U}\soft_{\gamma\lambda}(\vec{\Sigma})\vec{V}^T
+    \end{equation}
+    where $\vec{V} = \vec{U}\vec{\Sigma}\vec{V}^T$ is the SVD.
+\end{example}
+
+% NOTE: The proximal gradient framework is remarkably general and powerful
+
+\newpage
+%==============================================================================
+\section{Practical Considerations and Advanced Topics}
+%==============================================================================
+
+\subsection{Acceleration: FISTA}
+
+The Fast Iterative Soft Thresholding Algorithm (FISTA) improves convergence from $O(1/k)$ to $O(1/k^2)$:
+
+\begin{align}
+    \vec{y}_{k+1} & = \vec{x}_k + \frac{t_k - 1}{t_{k+1}}(\vec{x}_k - \vec{x}_{k-1})                         \\
+    \vec{x}_{k+1} & = \soft_{\gamma\lambda}(\vec{y}_{k+1} - \gamma\vec{D}^T(\vec{D}\vec{y}_{k+1} - \vec{y})) \\
+    t_{k+1}       & = \frac{1 + \sqrt{1 + 4t_k^2}}{2}
+\end{align}
+
+\subsection{Adaptive Step Size Selection}
+
+In practice, the Lipschitz constant $L$ may be unknown or conservative. Backtracking line search provides an adaptive solution:
 
 \begin{enumerate}
-    \item \textbf{Image Inpainting}: Fill missing regions using similar patches
-    \item \textbf{Super-Resolution}: Enhance resolution using patch recurrence
-    \item \textbf{Compression}: Exploit redundancy for efficient encoding
-    \item \textbf{Deblurring}: Combine with motion models for blur removal
+    \item Start with $\gamma = \gamma_0$ (e.g., $\gamma_0 = 1$)
+    \item While the descent condition is violated:
+          \begin{equation}
+              f(\vec{x}_{k+1}) > f(\vec{x}_k) + \inner{\nabla f(\vec{x}_k)}{\vec{x}_{k+1} - \vec{x}_k} + \frac{1}{2\gamma}\norm{\vec{x}_{k+1} - \vec{x}_k}_2^2
+          \end{equation}
+          reduce $\gamma \leftarrow \beta\gamma$ (typically $\beta = 0.5$)
 \end{enumerate}
 
-\newpage
+\subsection{Warm Starting and Continuation}
 
-% NOTE: This section provides mathematical notation reference
-\section{Mathematical Notation and Symbol Glossary}
-\label{sec:notation}
+For solving a sequence of related problems (e.g., regularization path):
+\begin{itemize}
+    \item \textbf{Warm starting}: Initialize $\vec{x}_0$ for $\lambda_i$ using solution from $\lambda_{i-1}$
+    \item \textbf{Continuation}: Solve for decreasing sequence $\lambda_1 > \lambda_2 > \cdots > \lambda_{\text{target}}$
+\end{itemize}
 
-\begin{table}[htbp]
-    \centering
-    \begin{tabular}{cl}
-        \toprule
-        Symbol                  & Definition                        \\
-        \midrule
-        $x$                     & Clean (noise-free) image          \\
-        $y$                     & Noisy observed image              \\
-        $\hat{x}$               & Denoised image estimate           \\
-        $\eta$                  & Additive noise                    \\
-        $\sigma^2$              & Noise variance                    \\
-        $P_{i,j}$               & Image patch centered at $(i,j)$   \\
-        $U_{i,j}$               & Local neighborhood around $(i,j)$ \\
-        $S_{i,j}$               & Search window around $(i,j)$      \\
-        $w_{i,j}(k,l)$          & Similarity weight between pixels  \\
-        $d^2(\cdot,\cdot)$      & Squared patch distance            \\
-        $h$                     & Filtering parameter               \\
-        $G_{i,j}$               & Group of similar patches          \\
-        $\mathcal{T}$           & Transform domain representation   \\
-        $\mathcal{W}_{3D}$      & 3D transform operator             \\
-        $\lambda$               & Threshold parameter               \\
-        $\mathcal{H}_{\lambda}$ & Hard thresholding operator        \\
-        $\|\cdot\|_0$           & Number of non-zero elements       \\
-        $\|\cdot\|_2$           & Euclidean norm                    \\
-        \bottomrule
-    \end{tabular}
-    \caption{Mathematical notation used throughout the document}
-    \label{tab:notation}
-\end{table}
+\subsection{Stopping Criteria}
 
+Practical termination conditions include:
+\begin{enumerate}
+    \item \textbf{Relative change}: $\frac{\norm{\vec{x}_{k+1} - \vec{x}_k}_2}{\norm{\vec{x}_k}_2} < \epsilon_{\text{tol}}$
+    \item \textbf{Gradient magnitude}: $\norm{\vec{x}_k - \prox_{\gamma g}(\vec{x}_k - \gamma\nabla f(\vec{x}_k))}_2 < \epsilon_{\text{tol}}$
+    \item \textbf{Duality gap}: For problems with known dual formulation
+\end{enumerate}
+
+%==============================================================================
 \section{Conclusion}
-\label{sec:conclusion}
+%==============================================================================
 
-Self-similarity based denoising algorithms represent a fundamental paradigm shift in image processing, moving from local operations to global patch-based methods. The Non-Local Means algorithm introduced the concept of exploiting patch recurrence, while BM3D extended this through collaborative filtering in transform domains.
-
-\paragraph{Key Contributions}
-\begin{itemize}
-    \item Exploitation of natural image statistics through self-similarity
-    \item Adaptive filtering based on patch-wise similarity measures
-    \item Collaborative processing of similar image structures
-    \item State-of-the-art denoising performance across various noise levels
-\end{itemize}
-
-\paragraph{Future Directions}
-Current research focuses on:
+The proximal gradient method elegantly handles composite optimization problems by:
 \begin{enumerate}
-    \item Integration with deep learning architectures
-    \item Real-time implementation strategies
-    \item Extension to video and volumetric data
-    \item Adaptive parameter selection mechanisms
+    \item Separating smooth and non-smooth components
+    \item Applying gradient descent to the smooth part
+    \item Using proximal mappings for the non-smooth part
 \end{enumerate}
 
-The principles established by these algorithms continue to influence modern image processing and computer vision applications, providing a foundation for numerous advanced techniques.
+For $\ell_1$-regularized problems, this yields the efficient ISTA algorithm, where each iteration consists of:
+\begin{itemize}
+    \item A gradient descent step (handling data fidelity)
+    \item A soft thresholding operation (inducing sparsity)
+\end{itemize}
 
-\newpage
+The framework extends naturally to numerous other regularizers and has become a cornerstone of modern optimization in machine learning and signal processing.
 
-\section{Appendix: Detailed Algorithm Implementations}
-\label{sec:appendix}
+\begin{remark}[Historical Note]
+    The development of proximal methods traces back to Moreau (1962) and Rockafellar (1976), but their application to sparse recovery problems emerged prominently with the work of Daubechies, Defrise, and De Mol (2004) on iterative thresholding, followed by Beck and Teboulle's FISTA (2009).
+\end{remark}
 
-\subsection{Non-Local Means Pseudocode}
-\label{subsec:nlm_pseudocode}
-
-\begin{algorithm}
-    \caption{Detailed Non-Local Means Implementation}
-    \begin{algorithmic}[1]
-        \STATE \textbf{Input:} Noisy image $y$ of size $M \times N$, patch size $p$, search size $s$, filtering parameter $h$
-        \STATE \textbf{Output:} Denoised image $\hat{x}$
-        \STATE
-        \STATE // Pad image for boundary handling
-        \STATE $\tilde{y} \leftarrow \text{SymmetricPad}(y, p/2)$
-        \STATE
-        \FOR{$i = 1$ to $M$}
-        \FOR{$j = 1$ to $N$}
-        \STATE $\text{weightSum} \leftarrow 0$
-        \STATE $\text{pixelSum} \leftarrow 0$
-        \STATE
-        \STATE // Define search window
-        \STATE $i_{\min} \leftarrow \max(1, i - s/2)$
-        \STATE $i_{\max} \leftarrow \min(M, i + s/2)$
-        \STATE $j_{\min} \leftarrow \max(1, j - s/2)$
-        \STATE $j_{\max} \leftarrow \min(N, j + s/2)$
-        \STATE
-        \FOR{$k = i_{\min}$ to $i_{\max}$}
-        \FOR{$l = j_{\min}$ to $j_{\max}$}
-        \STATE // Extract patches
-        \STATE $P_{ref} \leftarrow \text{ExtractPatch}(\tilde{y}, i, j, p)$
-        \STATE $P_{cur} \leftarrow \text{ExtractPatch}(\tilde{y}, k, l, p)$
-        \STATE
-        \STATE // Compute patch distance
-        \STATE $d^2 \leftarrow \frac{1}{p^2} \sum_{u,v} |P_{ref}(u,v) - P_{cur}(u,v)|^2$
-        \STATE $d^2 \leftarrow \max(d^2 - 2\sigma^2, 0)$ // Noise correction
-        \STATE
-        \STATE // Compute weight
-        \STATE $w \leftarrow \exp(-d^2/h^2)$
-        \STATE $\text{weightSum} \leftarrow \text{weightSum} + w$
-        \STATE $\text{pixelSum} \leftarrow \text{pixelSum} + w \cdot y_{k,l}$
-        \ENDFOR
-        \ENDFOR
-        \STATE
-        \STATE // Normalize and store result
-        \STATE $\hat{x}_{i,j} \leftarrow \text{pixelSum} / \text{weightSum}$
-        \ENDFOR
-        \ENDFOR
-    \end{algorithmic}
-\end{algorithm}
-
-\subsection{BM3D Implementation Framework}
-\label{subsec:bm3d_framework_impl}
-
-The BM3D implementation involves several key components:
-
-\paragraph{Stage 1: Hard Thresholding}
-\begin{algorithmic}[1]
-    \STATE \textbf{function} BM3D\_Stage1($y$, $\sigma$, $\tau_1$)
-    \FOR{each reference patch location $(i,j)$}
-    \STATE $G \leftarrow \text{FindSimilarPatches}(y, i, j, \tau_1)$
-    \STATE $\mathcal{T} \leftarrow \text{Apply3DTransform}(G)$
-    \STATE $\hat{\mathcal{T}} \leftarrow \text{HardThreshold}(\mathcal{T}, 2.7\sigma)$
-    \STATE $\hat{G} \leftarrow \text{Inverse3DTransform}(\hat{\mathcal{T}})$
-    \STATE $\text{AggregatePatches}(\hat{G}, \text{weights})$
-    \ENDFOR
-    \STATE \textbf{return} $\hat{x}^{(1)}$
-\end{algorithmic}
-
-\paragraph{Stage 2: Collaborative Filtering}
-\begin{algorithmic}[1]
-    \STATE \textbf{function} BM3D\_Stage2($y$, $\hat{x}^{(1)}$, $\sigma$, $\tau_2$)
-    \FOR{each reference patch location $(i,j)$}
-    \STATE $G_{\text{noisy}} \leftarrow \text{FindSimilarPatches}(y, i, j, \tau_2, \hat{x}^{(1)})$
-    \STATE $G_{\text{basic}} \leftarrow \text{ExtractCorrespondingPatches}(\hat{x}^{(1)}, G_{\text{noisy}})$
-    \STATE $\mathcal{T}_{\text{noisy}} \leftarrow \text{Apply3DTransform}(G_{\text{noisy}})$
-    \STATE $\mathcal{T}_{\text{basic}} \leftarrow \text{Apply3DTransform}(G_{\text{basic}})$
-    \STATE $\hat{\mathcal{T}} \leftarrow \text{WienerFilter}(\mathcal{T}_{\text{noisy}}, \mathcal{T}_{\text{basic}}, \sigma)$
-    \STATE $\hat{G} \leftarrow \text{Inverse3DTransform}(\hat{\mathcal{T}})$
-    \STATE $\text{AggregatePatches}(\hat{G}, \text{weights})$
-    \ENDFOR
-    \STATE \textbf{return} $\hat{x}^{(2)}$
-\end{algorithmic}
+% NOTE: This framework has revolutionized sparse optimization and continues to inspire new algorithms
 
 \end{document}
