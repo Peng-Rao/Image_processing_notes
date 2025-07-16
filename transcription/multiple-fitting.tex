@@ -1,0 +1,1012 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\median}{median}
+\DeclareMathOperator{\argmin}{argmin}
+\DeclareMathOperator{\argmax}{argmax}
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\rank}{rank}
+\DeclareMathOperator{\trace}{tr}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{algorithm}[theorem]{Algorithm}
+
+\title{Multi-Model Fitting in Computer Vision:\\ Advanced Robust Estimation Techniques}
+\author{Lecture Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    This document presents a comprehensive treatment of multi-model fitting techniques in computer vision, focusing on robust estimation methods that can handle multiple geometric structures simultaneously. We explore the evolution from classical RANSAC to modern multi-model approaches, including MSAC, MLESAC, sequential RANSAC, and the Hough transform. The mathematical foundations, algorithmic implementations, and practical applications are thoroughly examined with particular emphasis on the fundamental chicken-and-egg problem inherent in clustering points to fit models while requiring models to define clusters.
+\end{abstract}
+
+\tableofcontents
+
+\newpage
+
+% NOTE: This section introduces the fundamental concepts and motivates the need for robust estimation
+\section{Introduction to Robust Model Fitting}
+\label{sec:introduction}
+
+The problem of fitting parametric models to data contaminated with outliers represents one of the most fundamental challenges in computer vision and pattern recognition. Classical least-squares estimation, while optimal for Gaussian noise, fails catastrophically in the presence of even small percentages of outliers. This motivates the development of robust estimation techniques that can maintain accuracy even when significant portions of the data do not conform to the assumed model.
+
+\subsection{The Outlier Problem}
+\label{subsec:outlier_problem}
+
+Consider a dataset $\mathcal{D} = \{\vec{x}_i\}_{i=1}^N$ where each point $\vec{x}_i \in \mathbb{R}^d$ represents a measurement. In the presence of outliers, we can partition the data into two disjoint sets:
+\begin{align}
+    \mathcal{D}                  & = \mathcal{I} \cup \mathcal{O} \label{eq:data_partition} \\
+    \mathcal{I} \cap \mathcal{O} & = \emptyset \label{eq:disjoint_sets}
+\end{align}
+where $\mathcal{I}$ represents the set of inliers that conform to the underlying model, and $\mathcal{O}$ represents the outliers that do not.
+
+\begin{definition}[Breakdown Point]
+    \label{def:breakdown_point}
+    The breakdown point of an estimator is the smallest fraction of outliers that can cause the estimator to produce arbitrarily large errors. Formally, for an estimator $\hat{\theta}$ and dataset size $n$, the breakdown point $\epsilon^*$ is:
+    \begin{equation}
+        \epsilon^* = \max\left\{\frac{k}{n} : \sup_{\mathcal{O}, |\mathcal{O}|=k} \|\hat{\theta}(\mathcal{D}) - \theta_{\text{true}}\| < \infty\right\}
+    \end{equation}
+\end{definition}
+
+\marginpar{Key Insight: Least squares has a breakdown point of $\frac{1}{n}$, while robust estimators can achieve up to $50\%$.}
+
+\subsection{Classical RANSAC Framework}
+\label{subsec:classical_ransac}
+
+The Random Sample Consensus (RANSAC) algorithm, introduced by Fischler and Bolles, provides a paradigm for robust model fitting. The algorithm iteratively selects minimal sample sets, fits models, and evaluates their support in the data.
+
+\begin{algorithm}[RANSAC]
+    \label{alg:ransac}
+    Given dataset $\mathcal{D}$, model class $\mathcal{M}$, and parameters $\tau$ (inlier threshold) and $K$ (maximum iterations):
+    \begin{enumerate}
+        \item For $k = 1, 2, \ldots, K$:
+              \begin{enumerate}
+                  \item Randomly select minimal sample set $\mathcal{S}_k \subset \mathcal{D}$ with $|\mathcal{S}_k| = m$
+                  \item Fit model $\theta_k$ to $\mathcal{S}_k$
+                  \item Compute consensus set: $\mathcal{C}_k = \{\vec{x}_i \in \mathcal{D} : d(\vec{x}_i, \theta_k) \leq \tau\}$
+                  \item If $|\mathcal{C}_k| > |\mathcal{C}_{\text{best}}|$, set $\mathcal{C}_{\text{best}} = \mathcal{C}_k$ and $\theta_{\text{best}} = \theta_k$
+              \end{enumerate}
+        \item Refine $\theta_{\text{best}}$ using least squares on $\mathcal{C}_{\text{best}}$
+    \end{enumerate}
+\end{algorithm}
+
+The number of iterations $K$ is typically chosen to ensure a high probability of sampling at least one outlier-free minimal set:
+\begin{equation}
+    K = \frac{\log(1 - p)}{\log(1 - (1-\epsilon)^m)}
+    \label{eq:ransac_iterations}
+\end{equation}
+where $p$ is the desired success probability and $\epsilon$ is the outlier ratio.
+
+\newpage
+
+% NOTE: This section covers advanced variants of RANSAC that improve upon the basic framework
+\section{Advanced RANSAC Variants}
+\label{sec:advanced_ransac}
+
+While classical RANSAC provides a robust framework, several limitations motivate the development of more sophisticated variants. These include the binary nature of the consensus evaluation, sensitivity to threshold selection, and suboptimal use of geometric information.
+
+\subsection{M-Estimator Sample Consensus (MSAC)}
+\label{subsec:msac}
+
+MSAC addresses the limitation of RANSAC's binary consensus evaluation by incorporating the distance of inliers from the fitted model. Instead of simply counting inliers, MSAC minimizes a more informative loss function.
+
+\begin{definition}[MSAC Loss Function]
+    \label{def:msac_loss}
+    For a model $\theta$ and data point $\vec{x}_i$, the MSAC loss is defined as:
+    \begin{equation}
+        \rho_{\text{MSAC}}(r_i, \theta) = \begin{cases}
+            r_i^2  & \text{if } r_i \leq \tau \\
+            \tau^2 & \text{if } r_i > \tau
+        \end{cases}
+        \label{eq:msac_loss}
+    \end{equation}
+    where $r_i = d(\vec{x}_i, \theta)$ is the residual distance from point $\vec{x}_i$ to model $\theta$.
+\end{definition}
+
+The total loss for a model $\theta$ is:
+\begin{equation}
+    L_{\text{MSAC}}(\theta) = \sum_{i=1}^N \rho_{\text{MSAC}}(r_i, \theta)
+    \label{eq:msac_total_loss}
+\end{equation}
+
+\marginpar{Advantage: MSAC provides more discriminative power by considering how well inliers fit the model, not just their count.}
+
+\textbf{Theoretical Analysis:} The MSAC loss function is a truncated quadratic, which provides several advantages:
+\begin{enumerate}
+    \item \textit{Outlier Robustness}: Points beyond threshold $\tau$ contribute a constant penalty, preventing outliers from dominating the loss
+    \item \textit{Inlier Refinement}: Points within the threshold are penalized proportionally to their squared distance, encouraging better fits
+    \item \textit{Bounded Influence}: The loss function is bounded above by $\tau^2$, ensuring stability
+\end{enumerate}
+
+\subsection{Maximum Likelihood Estimation Sample Consensus (MLESAC)}
+\label{subsec:mlesac}
+
+MLESAC further refines the evaluation criterion by adopting a probabilistic framework based on the median of absolute residuals, providing additional robustness against outliers.
+
+\begin{definition}[MLESAC Loss Function]
+    \label{def:mlesac_loss}
+    The MLESAC loss is defined as:
+    \begin{equation}
+        L_{\text{MLESAC}}(\theta) = \median_{i=1}^N |r_i|
+        \label{eq:mlesac_loss}
+    \end{equation}
+    where $r_i = d(\vec{x}_i, \theta)$ represents the residual for point $\vec{x}_i$.
+\end{definition}
+
+\textbf{Robustness Properties:} The median-based loss function exhibits superior robustness characteristics:
+
+\begin{theorem}[Median Robustness]
+    \label{thm:median_robustness}
+    The median estimator has a breakdown point of $50\%$, meaning it can tolerate up to $50\%$ outliers without arbitrary degradation.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+    Consider a dataset with $n$ points where $k < n/2$ are outliers. The median will always be determined by the majority of inliers, regardless of the magnitude of the outlier values. Only when $k \geq n/2$ can outliers influence the median value.
+\end{proof}
+
+\textbf{Computational Considerations:} While the median provides excellent robustness, its computation requires $O(n \log n)$ time for sorting, compared to $O(n)$ for mean-based estimators. However, efficient selection algorithms can reduce this to $O(n)$ expected time.
+
+\subsection{Comparative Analysis of RANSAC Variants}
+\label{subsec:ransac_comparison}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Method} & \textbf{Loss Function} & \textbf{Breakdown Point} & \textbf{Computational Cost} & \textbf{Threshold Sensitivity} \\
+        \midrule
+        RANSAC          & Binary count           & $50\%$                   & $O(n)$                      & High                           \\
+        MSAC            & Truncated quadratic    & $50\%$                   & $O(n)$                      & Medium                         \\
+        MLESAC          & Median absolute        & $50\%$                   & $O(n \log n)$               & Low                            \\
+        \bottomrule
+    \end{tabular}
+    \caption{Comparison of RANSAC variants and their properties}
+    \label{tab:ransac_comparison}
+\end{table}
+
+\newpage
+
+% NOTE: This section addresses the fundamental challenge of fitting multiple models simultaneously
+\section{Multi-Model Fitting Framework}
+\label{sec:multimodel_framework}
+
+The extension from single-model to multi-model fitting introduces fundamental challenges that require sophisticated approaches. The core difficulty lies in the chicken-and-egg problem: clustering points requires knowledge of models, while fitting models requires knowledge of point clusters.
+
+\subsection{Problem Formulation}
+\label{subsec:multimodel_formulation}
+
+\begin{definition}[Multi-Model Fitting Problem]
+    \label{def:multimodel_problem}
+    Given a dataset $\mathcal{D} = \{\vec{x}_i\}_{i=1}^N$ and a model family $\mathcal{M}$, find:
+    \begin{align}
+        \Theta      & = \{\theta_1, \theta_2, \ldots, \theta_K\} \label{eq:model_set}                    \\
+        \mathcal{P} & = \{\mathcal{P}_1, \mathcal{P}_2, \ldots, \mathcal{P}_K\} \label{eq:partition_set}
+    \end{align}
+    where $\Theta$ represents the set of model parameters and $\mathcal{P}$ represents a partition of the data such that:
+    \begin{align}
+        \bigcup_{k=1}^K \mathcal{P}_k    & = \mathcal{D} \setminus \mathcal{O} \label{eq:partition_union}   \\
+        \mathcal{P}_i \cap \mathcal{P}_j & = \emptyset \quad \forall i \neq j \label{eq:partition_disjoint}
+    \end{align}
+    and each $\theta_k$ optimally fits the points in $\mathcal{P}_k$.
+\end{definition}
+
+\marginpar{Challenge: The number of models $K$ is typically unknown a priori, adding another layer of complexity.}
+
+\subsection{The Chicken-and-Egg Problem}
+\label{subsec:chicken_egg}
+
+The fundamental challenge in multi-model fitting can be formalized as follows:
+
+\begin{enumerate}
+    \item \textbf{Clustering Requirement}: To fit model $\theta_k$, we need to identify the subset $\mathcal{P}_k \subset \mathcal{D}$ of points that belong to model $k$
+    \item \textbf{Model Requirement}: To cluster point $\vec{x}_i$ into partition $\mathcal{P}_k$, we need to know model $\theta_k$ to compute the distance $d(\vec{x}_i, \theta_k)$
+\end{enumerate}
+
+This circular dependency necessitates iterative or simultaneous approaches that can break the cycle through:
+\begin{itemize}
+    \item \textit{Sequential strategies}: Fit models one at a time, removing inliers after each fit
+    \item \textit{Simultaneous strategies}: Jointly optimize over all models and partitions
+    \item \textit{Voting strategies}: Use parameter space voting to identify multiple models
+\end{itemize}
+
+\subsection{Outlier Complexity in Multi-Model Settings}
+\label{subsec:multimodel_outliers}
+
+In multi-model fitting, the effective outlier ratio increases significantly. Consider fitting model $\theta_k$ in the presence of $K$ models:
+
+\begin{equation}
+    \epsilon_{\text{effective}} = \epsilon_{\text{true}} + \frac{K-1}{K}(1 - \epsilon_{\text{true}})
+    \label{eq:effective_outlier_ratio}
+\end{equation}
+
+where $\epsilon_{\text{true}}$ is the true outlier ratio and $\epsilon_{\text{effective}}$ is the effective outlier ratio seen by each individual model.
+
+\textbf{Example:} With 10 equally represented models and 10\% true outliers:
+\begin{align}
+    \epsilon_{\text{effective}} & = 0.1 + \frac{9}{10}(1 - 0.1) = 0.1 + 0.9 \cdot 0.9 = 0.91
+\end{align}
+
+This dramatic increase in effective outlier ratio severely impacts the performance of standard RANSAC, motivating specialized multi-model approaches.
+
+\newpage
+
+% NOTE: This section covers sequential approaches to multi-model fitting
+\section{Sequential Multi-Model Fitting}
+\label{sec:sequential_fitting}
+
+Sequential approaches address multi-model fitting by iteratively applying single-model fitting techniques, removing inliers after each successful fit. While conceptually simple, these methods can suffer from order dependency and accumulation of errors.
+
+\subsection{Sequential RANSAC}
+\label{subsec:sequential_ransac}
+
+Sequential RANSAC represents the most straightforward extension of RANSAC to multi-model scenarios. The algorithm repeatedly applies RANSAC, removing inliers after each successful model fit.
+
+\begin{algorithm}[Sequential RANSAC]
+    \label{alg:sequential_ransac}
+    Given dataset $\mathcal{D}$, minimum consensus $\tau_{\text{min}}$, and maximum models $K_{\text{max}}$:
+    \begin{enumerate}
+        \item Initialize: $\mathcal{D}_{\text{current}} = \mathcal{D}$, $\Theta = \emptyset$, $k = 0$
+        \item While $k < K_{\text{max}}$ and $|\mathcal{D}_{\text{current}}| \geq \tau_{\text{min}}$:
+              \begin{enumerate}
+                  \item Apply RANSAC to $\mathcal{D}_{\text{current}}$ to find model $\theta_k$
+                  \item Compute consensus set $\mathcal{C}_k = \{\vec{x}_i \in \mathcal{D}_{\text{current}} : d(\vec{x}_i, \theta_k) \leq \tau\}$
+                  \item If $|\mathcal{C}_k| < \tau_{\text{min}}$, terminate
+                  \item Refine $\theta_k$ using least squares on $\mathcal{C}_k$
+                  \item Add $\theta_k$ to $\Theta$
+                  \item Update: $\mathcal{D}_{\text{current}} = \mathcal{D}_{\text{current}} \setminus \mathcal{C}_k$
+                  \item Increment: $k = k + 1$
+              \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Theoretical Analysis of Sequential RANSAC}
+\label{subsec:sequential_analysis}
+
+\begin{theorem}[Sequential RANSAC Convergence]
+    \label{thm:sequential_convergence}
+    Under the assumption that models are well-separated and the minimum consensus threshold is appropriately chosen, Sequential RANSAC will find all models with probability:
+    \begin{equation}
+        P_{\text{success}} = \prod_{k=1}^K \left(1 - \left(1 - (1-\epsilon_k)^m\right)^{T_k}\right)
+        \label{eq:sequential_success_prob}
+    \end{equation}
+    where $\epsilon_k$ is the outlier ratio when fitting model $k$ and $T_k$ is the number of RANSAC iterations for model $k$.
+\end{theorem}
+
+\textbf{Limitations of Sequential RANSAC:}
+\begin{enumerate}
+    \item \textit{Order Dependency}: The sequence in which models are found depends on their relative support and may not reflect the true underlying structure
+    \item \textit{Error Accumulation}: Misclassified points in early iterations affect subsequent model fitting
+    \item \textit{Threshold Sensitivity}: Performance heavily depends on the choice of inlier threshold and minimum consensus
+    \item \textit{Suboptimal Solutions}: Greedy selection may lead to locally optimal but globally suboptimal solutions
+\end{enumerate}
+
+\subsection{Preference Matrix Formulation}
+\label{subsec:preference_matrix}
+
+Sequential RANSAC can be understood through the lens of preference matrices, which provide insight into simultaneous multi-model approaches.
+
+\begin{definition}[Preference Matrix]
+    \label{def:preference_matrix}
+    The preference matrix $\mathbf{P} \in \mathbb{R}^{N \times M}$ is defined as:
+    \begin{equation}
+        P_{ij} = \begin{cases}
+            1 & \text{if } d(\vec{x}_i, \theta_j) \leq \tau \\
+            0 & \text{otherwise}
+        \end{cases}
+        \label{eq:preference_matrix_binary}
+    \end{equation}
+    where $N$ is the number of data points and $M$ is the number of model hypotheses.
+\end{definition}
+
+Alternatively, the preference matrix can store residuals:
+\begin{equation}
+    P_{ij} = d(\vec{x}_i, \theta_j)
+    \label{eq:preference_matrix_residual}
+\end{equation}
+
+\textbf{Conceptual Insights:}
+\begin{itemize}
+    \item Each row represents a data point's affinity to all model hypotheses
+    \item Each column represents a model's support across all data points
+    \item Sequential RANSAC selects the column with maximum support, then removes corresponding rows
+    \item Simultaneous approaches can exploit the full matrix structure
+\end{itemize}
+
+\newpage
+
+% NOTE: This section covers simultaneous approaches and the Hough transform
+\section{Simultaneous Multi-Model Fitting and Hough Transform}
+\label{sec:simultaneous_fitting}
+
+Simultaneous approaches to multi-model fitting attempt to identify all models jointly, avoiding the limitations of sequential methods. The Hough transform represents a classical voting-based approach that has been widely successful in computer vision applications.
+
+\subsection{Conceptual Framework for Simultaneous Fitting}
+\label{subsec:simultaneous_framework}
+
+Instead of sequentially selecting columns from the preference matrix, simultaneous approaches seek to:
+\begin{enumerate}
+    \item \textit{Cluster rows}: Group data points with similar preference patterns
+    \item \textit{Regularize solutions}: Incorporate sparsity constraints to prefer simpler models
+    \item \textit{Optimize jointly}: Minimize a global objective function over all models and assignments
+\end{enumerate}
+
+\begin{definition}[Joint Optimization Problem]
+    \label{def:joint_optimization}
+    The simultaneous multi-model fitting problem can be formulated as:
+    \begin{align}
+        \min_{\Theta, \mathcal{P}} \quad & \sum_{k=1}^K \sum_{\vec{x}_i \in \mathcal{P}_k} \rho(d(\vec{x}_i, \theta_k)) + \lambda \|\Theta\|_0 \label{eq:joint_objective} \\
+        \text{subject to} \quad          & \mathcal{P}_i \cap \mathcal{P}_j = \emptyset \quad \forall i \neq j \label{eq:joint_constraint1}                               \\
+                                         & \bigcup_{k=1}^K \mathcal{P}_k \subseteq \mathcal{D} \label{eq:joint_constraint2}
+    \end{align}
+    where $\rho(\cdot)$ is a robust loss function and $\lambda$ controls model complexity.
+\end{definition}
+
+\subsection{The Hough Transform}
+\label{subsec:hough_transform}
+
+The Hough transform provides an elegant solution to multi-model fitting by transforming the point clustering problem into a peak detection problem in parameter space.
+
+\subsubsection{Fundamental Principle}
+\label{subsubsec:hough_principle}
+
+The key insight of the Hough transform is the duality between point space and parameter space:
+\begin{itemize}
+    \item Each point in data space corresponds to a curve in parameter space
+    \item Each model in parameter space corresponds to a point in data space
+    \item Points lying on the same model generate curves that intersect at the model's parameters
+\end{itemize}
+
+\subsubsection{Line Detection via Hough Transform}
+\label{subsubsec:hough_lines}
+
+For line detection, we parameterize lines using the normal form:
+\begin{equation}
+    \rho = x \cos \theta + y \sin \theta
+    \label{eq:line_normal_form}
+\end{equation}
+where $\rho$ is the perpendicular distance from the origin to the line, and $\theta$ is the angle of the normal vector.
+
+\begin{algorithm}[Hough Transform for Line Detection]
+    \label{alg:hough_lines}
+    Given edge points $\{(x_i, y_i)\}_{i=1}^N$:
+    \begin{enumerate}
+        \item Initialize accumulator array $A[\rho, \theta]$ with appropriate discretization
+        \item For each edge point $(x_i, y_i)$:
+              \begin{enumerate}
+                  \item For $\theta = -\pi/2$ to $\pi/2$ with step $\Delta\theta$:
+                        \begin{enumerate}
+                            \item Compute $\rho = x_i \cos \theta + y_i \sin \theta$
+                            \item Increment $A[\rho, \theta]$
+                        \end{enumerate}
+              \end{enumerate}
+        \item Find local maxima in $A[\rho, \theta]$ above threshold
+        \item Each maximum corresponds to a line with parameters $(\rho, \theta)$
+    \end{enumerate}
+\end{algorithm}
+
+\textbf{Advantages of Normal Parameterization:}
+\begin{enumerate}
+    \item \textit{Bounded Parameter Space}: $\rho \in [0, \rho_{\max}]$ and $\theta \in [-\pi/2, \pi/2]$
+    \item \textit{No Singularities}: Unlike slope-intercept form, vertical lines are handled naturally
+    \item \textit{Uniform Discretization}: Parameter space can be uniformly discretized
+\end{enumerate}
+
+\subsubsection{Mathematical Analysis}
+\label{subsubsec:hough_analysis}
+
+\begin{theorem}[Hough Transform Optimality]
+    \label{thm:hough_optimality}
+    The Hough transform finds the globally optimal solution to the multi-model fitting problem when:
+    \begin{enumerate}
+        \item The parameter space is exhaustively searched
+        \item The accumulator discretization is sufficiently fine
+        \item The peak detection threshold is appropriately chosen
+    \end{enumerate}
+\end{theorem}
+
+\textbf{Complexity Analysis:}
+\begin{itemize}
+    \item \textit{Time Complexity}: $O(N \cdot M)$ where $N$ is the number of points and $M$ is the number of parameter combinations
+    \item \textit{Space Complexity}: $O(M)$ for the accumulator array
+    \item \textit{Scalability}: Exponential growth with parameter dimensionality (curse of dimensionality)
+\end{itemize}
+
+\subsection{Extension to Circle Detection}
+\label{subsec:hough_circles}
+
+Circle detection requires a three-dimensional parameter space $(x_c, y_c, r)$ where $(x_c, y_c)$ is the center and $r$ is the radius. The circle equation is:
+\begin{equation}
+    (x - x_c)^2 + (y - y_c)^2 = r^2
+    \label{eq:circle_equation}
+\end{equation}
+
+\begin{algorithm}[Hough Transform for Circle Detection]
+    \label{alg:hough_circles}
+    For known radius $r$:
+    \begin{enumerate}
+        \item Initialize 2D accumulator $A[x_c, y_c]$
+        \item For each edge point $(x_i, y_i)$:
+              \begin{enumerate}
+                  \item For $\theta = 0$ to $2\pi$ with step $\Delta\theta$:
+                        \begin{enumerate}
+                            \item Compute $x_c = x_i + r \cos \theta$, $y_c = y_i + r \sin \theta$
+                            \item Increment $A[x_c, y_c]$
+                        \end{enumerate}
+              \end{enumerate}
+        \item Find peaks in $A[x_c, y_c]$
+    \end{enumerate}
+\end{algorithm}
+
+For unknown radius, a 3D accumulator is required, significantly increasing computational cost.
+
+\newpage
+
+% NOTE: This section covers practical applications and implementation considerations
+\section{Applications and Implementation Considerations}
+\label{sec:applications}
+
+Multi-model fitting techniques find widespread application across computer vision and robotics. This section examines key application domains and practical implementation considerations.
+
+\subsection{Geometric Structure Detection}
+\label{subsec:geometric_applications}
+
+\subsubsection{Architectural Scene Analysis}
+\label{subsubsec:architectural_scenes}
+
+In architectural scene analysis, multi-model fitting is used to identify planar structures from 3D point clouds. The typical workflow involves:
+
+\begin{enumerate}
+    \item \textit{3D Point Cloud Acquisition}: Using laser scanners or stereo vision systems
+    \item \textit{Plane Fitting}: Applying multi-model RANSAC to identify wall and ceiling planes
+    \item \textit{Structural Analysis}: Extracting architectural elements and their relationships
+\end{enumerate}
+
+\textbf{Mathematical Formulation:} A plane in 3D space can be parameterized as:
+\begin{equation}
+    \vec{n} \cdot (\vec{x} - \vec{p}) = 0
+    \label{eq:plane_equation}
+\end{equation}
+where $\vec{n} = (a, b, c)^T$ is the unit normal vector and $\vec{p}$ is a point on the plane.
+
+Alternatively, using the implicit form:
+\begin{equation}
+    ax + by + cz + d = 0 \quad \text{with } a^2 + b^2 + c^2 = 1
+    \label{eq:plane_implicit}
+\end{equation}
+
+\subsubsection{Fundamental Matrix Estimation}
+\label{subsubsec:fundamental_matrix}
+
+In stereo vision, the fundamental matrix $\mathbf{F}$ encodes the epipolar geometry between two views. Multi-model fitting is essential when dealing with:
+\begin{itemize}
+    \item Multiple rigid objects moving independently
+    \item Scenes with both static and dynamic elements
+    \item Degenerate configurations requiring robust estimation
+\end{itemize}
+
+The fundamental matrix satisfies:
+\begin{equation}
+    \vec{x}_2^T \mathbf{F} \vec{x}_1 = 0
+    \label{eq:fundamental_matrix}
+\end{equation}
+for corresponding points $\vec{x}_1$ and $\vec{x}_2$ in homogeneous coordinates.
+
+\subsection{Motion Segmentation and Tracking}
+\label{subsec:motion_applications}
+
+\subsubsection{Trajectory Clustering}
+\label{subsubsec:trajectory_clustering}
+
+In video analysis, points belonging to the same rigid object should follow consistent motion patterns. Multi-model fitting can cluster trajectories by fitting:
+\begin{itemize}
+    \item \textit{Affine motion models}: For short-term tracking
+    \item \textit{Subspace constraints}: For long-term trajectory analysis
+    \item \textit{Piecewise linear models}: For trajectory segmentation
+\end{itemize}
+
+\textbf{Subspace Clustering Formulation:} Trajectories of points on a rigid object lie in a low-dimensional subspace. Given trajectory matrix $\mathbf{T} \in \mathbb{R}^{2F \times P}$ where $F$ is the number of frames and $P$ is the number of points:
+\begin{equation}
+    \mathbf{T} = \mathbf{M} \mathbf{S}
+    \label{eq:trajectory_factorization}
+\end{equation}
+where $\mathbf{M} \in \mathbb{R}^{2F \times r}$ contains motion information and $\mathbf{S} \in \mathbb{R}^{r \times P}$ contains structure information, with $r \ll \min(2F, P)$.
+
+\subsection{Template Matching and Object Recognition}
+\label{subsec:template_matching}
+
+Multi-model fitting enables robust template matching by:
+\begin{enumerate}
+    \item \textit{Correspondence Establishment}: Finding point correspondences between template and image
+    \item \textit{Transformation Estimation}: Fitting multiple geometric transformations (affine, projective)
+    \item \textit{Outlier Rejection}: Handling mismatched correspondences robustly
+\end{enumerate}
+
+\textbf{Projective Transformation:} The projective transformation between template and image coordinates is:
+\begin{equation}
+    \begin{pmatrix} x' \\ y' \\ w' \end{pmatrix} = \begin{pmatrix} h_{11} & h_{12} & h_{13} \\ h_{21} & h_{22} & h_{23} \\ h_{31} & h_{32} & h_{33} \end{pmatrix} \begin{pmatrix} x \\ y \\ 1 \end{pmatrix}
+    \label{eq:projective_transform}
+\end{equation}
+where $(x', y') = (x'/w', y'/w')$ are the transformed coordinates.
+
+\subsection{Implementation Considerations}
+\label{subsec:implementation}
+
+\subsubsection{Parameter Selection}
+\label{subsubsec:parameter_selection}
+
+Effective multi-model fitting requires careful selection of several parameters:
+
+\begin{enumerate}
+    \item \textit{Inlier Threshold ($\tau$)}: Should be set based on:
+          \begin{align}
+              \tau & = k \cdot \sigma_{\text{noise}} \label{eq:threshold_selection}
+          \end{align}
+          where $k \in [2, 3]$ and $\sigma_{\text{noise}}$ is the estimated noise standard deviation
+
+    \item \textit{Minimum Consensus ($\tau_{\min}$)}: Typically set as:
+          \begin{align}
+              \tau_{\min} & = \max(m + 1, \alpha \cdot N) \label{eq:min_consensus}
+          \end{align}
+          where $m$ is the minimal sample size and $\alpha \in [0.05, 0.1]$
+
+    \item \textit{Maximum Iterations}: Based on confidence level and expected outlier ratio:
+          \begin{align}
+              K_{\max} & = \frac{\log(1 - \beta)}{\log(1 - (1-\epsilon)^m)} \label{eq:max_iterations}
+          \end{align}
+          where $\beta$ is the desired confidence (typically 0.99)
+\end{enumerate}
+
+\subsubsection{Computational Optimization}
+\label{subsubsec:computational_optimization}
+
+Several strategies can improve computational efficiency:
+
+\begin{enumerate}
+    \item \textit{Early Termination}: Stop when sufficient consensus is found
+    \item \textit{Preemptive Scoring}: Evaluate partial models before full fitting
+    \item \textit{Guided Sampling}: Use prior information to bias sample selection
+    \item \textit{Parallel Processing}: Distribute iterations across multiple cores
+\end{enumerate}
+
+\begin{algorithm}[Optimized Sequential RANSAC]
+    \label{alg:optimized_sequential_ransac}
+    Enhanced version with computational optimizations:
+    \begin{enumerate}
+        \item Initialize data structures for efficient nearest neighbor queries
+        \item For each model fitting iteration:
+              \begin{enumerate}
+                  \item Use guided sampling based on local density
+                  \item Employ preemptive scoring to reject poor models early
+                  \item Update residual statistics incrementally
+                  \item Apply early termination when target consensus is reached
+              \end{enumerate}
+        \item Use spatial indexing for efficient inlier identification
+        \item Employ least squares refinement with iterative reweighting
+    \end{enumerate}
+\end{algorithm}
+
+\newpage
+
+% NOTE: This section provides advanced theoretical insights and open problems
+\section{Advanced Topics and Current Research}
+\label{sec:advanced_topics}
+
+This section explores cutting-edge developments in multi-model fitting, including theoretical advances, hybrid approaches, and emerging applications in modern computer vision.
+
+\subsection{Multi-Class Model Fitting}
+\label{subsec:multiclass_fitting}
+
+Traditional multi-model fitting assumes all models belong to the same family (e.g., all lines or all circles). Multi-class fitting addresses scenarios where different model types coexist.
+
+\begin{definition}[Multi-Class Fitting Problem]
+    \label{def:multiclass_problem}
+    Given model families $\mathcal{M}_1, \mathcal{M}_2, \ldots, \mathcal{M}_C$ and dataset $\mathcal{D}$, find:
+    \begin{align}
+        \Theta      & = \bigcup_{c=1}^C \Theta_c \quad \text{where } \Theta_c \subset \mathcal{M}_c \label{eq:multiclass_models} \\
+        \mathcal{P} & = \{\mathcal{P}_{\theta} : \theta \in \Theta\} \label{eq:multiclass_partitions}
+    \end{align}
+    such that each partition is optimally explained by its corresponding model.
+\end{definition}
+
+\textbf{Challenges in Multi-Class Fitting:}
+\begin{enumerate}
+    \item \textit{Model Selection}: Determining which model family to use for each cluster
+    \item \textit{Parameter Dimensionality}: Different model families have different parameter spaces
+    \item \textit{Comparison Metrics}: Comparing fits across different model types requires normalized metrics
+\end{enumerate}
+
+\textbf{Example Application:} Architectural scene analysis where both planar surfaces and cylindrical columns are present requires simultaneous fitting of planes and cylinders.
+
+\subsection{Information-Theoretic Model Selection}
+\label{subsec:information_theoretic}
+
+Modern approaches incorporate information-theoretic criteria to balance model complexity with fitting accuracy.
+
+\begin{definition}[Bayesian Information Criterion for Multi-Model Fitting]
+    \label{def:bic_multimodel}
+    For a set of models $\Theta = \{\theta_1, \ldots, \theta_K\}$, the BIC score is:
+    \begin{equation}
+        \text{BIC}(\Theta) = \sum_{k=1}^K \left[ |\mathcal{P}_k| \log \hat{\sigma}_k^2 + m_k \log |\mathcal{P}_k| \right]
+        \label{eq:bic_multimodel}
+    \end{equation}
+    where $\hat{\sigma}_k^2$ is the estimated noise variance for model $k$, $m_k$ is the number of parameters in model $k$, and $|\mathcal{P}_k|$ is the size of the corresponding partition.
+\end{definition}
+
+\textbf{Akaike Information Criterion (AIC):} Alternative criterion that typically favors more complex models:
+\begin{equation}
+    \text{AIC}(\Theta) = \sum_{k=1}^K \left[ |\mathcal{P}_k| \log \hat{\sigma}_k^2 + 2m_k \right]
+    \label{eq:aic_multimodel}
+\end{equation}
+
+\subsection{Sparsity-Regularized Multi-Model Fitting}
+\label{subsec:sparsity_regularized}
+
+Modern optimization techniques incorporate sparsity constraints to promote simpler model explanations.
+
+\begin{definition}[Sparsity-Regularized Objective]
+    \label{def:sparsity_objective}
+    The regularized multi-model fitting objective is:
+    \begin{equation}
+        \min_{\Theta, \mathbf{Z}} \sum_{i=1}^N \sum_{k=1}^K z_{ik} \rho(d(\vec{x}_i, \theta_k)) + \lambda \sum_{k=1}^K \|\theta_k\|_1 + \mu \sum_{k=1}^K \mathbf{1}[\|\theta_k\|_2 > 0]
+        \label{eq:sparsity_objective}
+    \end{equation}
+    where $\mathbf{Z} \in \{0,1\}^{N \times K}$ is the assignment matrix, $\lambda$ promotes parameter sparsity, and $\mu$ promotes model sparsity.
+\end{definition}
+
+\textbf{Optimization Approach:} The non-convex problem can be addressed using:
+\begin{enumerate}
+    \item \textit{Alternating Minimization}: Alternate between optimizing $\Theta$ and $\mathbf{Z}$
+    \item \textit{Relaxation Methods}: Relax binary constraints to continuous variables
+    \item \textit{Proximal Methods}: Use proximal operators for non-smooth terms
+\end{enumerate}
+
+\subsection{Deep Learning Integration}
+\label{subsec:deep_learning_integration}
+
+Recent advances combine traditional geometric fitting with deep learning approaches.
+
+\subsubsection{Learned Sampling Strategies}
+\label{subsubsec:learned_sampling}
+
+Neural networks can learn to predict promising sample sets for RANSAC:
+\begin{equation}
+    p(\mathcal{S} | \mathcal{D}) = \text{NetworkSample}(\mathcal{D}; \phi)
+    \label{eq:learned_sampling}
+\end{equation}
+where $\phi$ represents neural network parameters trained on datasets with known ground truth.
+
+\subsubsection{Differentiable RANSAC}
+\label{subsubsec:differentiable_ransac}
+
+Differentiable formulations enable end-to-end training:
+\begin{equation}
+    \hat{\theta} = \sum_{j=1}^M w_j \theta_j \quad \text{where } w_j = \frac{\exp(\beta \cdot \text{score}(\theta_j))}{\sum_{k=1}^M \exp(\beta \cdot \text{score}(\theta_k))}
+    \label{eq:differentiable_ransac}
+\end{equation}
+where $\beta$ is a temperature parameter controlling the softmax distribution.
+
+\subsection{Emerging Applications}
+\label{subsec:emerging_applications}
+
+\subsubsection{Event-Based Vision}
+\label{subsubsec:event_based_vision}
+
+Event cameras generate asynchronous streams of brightness change events, requiring new approaches to multi-model fitting:
+
+\begin{itemize}
+    \item \textit{Temporal Modeling}: Events are timestamped, requiring temporal consistency
+    \item \textit{Sparse Data}: Events are sparse, challenging traditional accumulation methods
+    \item \textit{High-Speed Motion}: Rapid changes require adaptive model updating
+\end{itemize}
+
+\textbf{Event-Based Line Detection:} Lines in event space can be parameterized as:
+\begin{equation}
+    \rho(t) = x \cos \theta + y \sin \theta + v_\rho t
+    \label{eq:event_line_param}
+\end{equation}
+where $v_\rho$ represents the temporal velocity component.
+
+\subsubsection{Point Cloud Processing}
+\label{subsubsec:point_cloud_processing}
+
+Modern 3D sensors generate massive point clouds requiring efficient multi-model fitting:
+
+\begin{itemize}
+    \item \textit{Hierarchical Processing}: Multi-resolution approaches for scalability
+    \item \textit{Semantic Constraints}: Incorporating learned semantic information
+    \item \textit{Temporal Consistency}: Maintaining model consistency across time
+\end{itemize}
+
+\newpage
+
+% NOTE: This section summarizes the theoretical foundations and provides conclusions
+\section{Theoretical Foundations and Conclusions}
+\label{sec:conclusions}
+
+This final section synthesizes the theoretical foundations underlying multi-model fitting and provides conclusions about current capabilities and future directions.
+
+\subsection{Fundamental Theoretical Results}
+\label{subsec:fundamental_results}
+
+\begin{theorem}[Multi-Model Fitting Complexity]
+    \label{thm:multimodel_complexity}
+    The multi-model fitting problem with $K$ models from a family with $m$ parameters each is NP-hard when $K$ is unknown and must be determined from the data.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+    The problem reduces to the optimal clustering problem, which is known to be NP-hard. Specifically, determining the optimal partition $\mathcal{P}$ that minimizes the total fitting error across all models requires exploring an exponential number of possible partitions.
+\end{proof}
+
+\begin{corollary}[Approximation Guarantees]
+    \label{cor:approximation_guarantees}
+    Sequential RANSAC provides a $\frac{1}{K}$-approximation to the optimal multi-model fitting solution under certain separability assumptions.
+\end{corollary}
+
+\subsection{Robustness Analysis}
+\label{subsec:robustness_analysis}
+
+\begin{theorem}[Breakdown Point of Multi-Model RANSAC]
+    \label{thm:multimodel_breakdown}
+    The breakdown point of multi-model RANSAC with $K$ models is:
+    \begin{equation}
+        \epsilon^* = \frac{1}{K+1}
+        \label{eq:multimodel_breakdown}
+    \end{equation}
+    This is significantly lower than the $50\%$ breakdown point of single-model RANSAC.
+\end{theorem}
+
+\textbf{Implications:} The degradation in breakdown point motivates the development of more sophisticated algorithms that can handle higher outlier ratios in multi-model scenarios.
+
+\subsection{Convergence Properties}
+\label{subsec:convergence_properties}
+
+\begin{theorem}[Convergence of Iterative Multi-Model Fitting]
+    \label{thm:convergence_iterative}
+    Under appropriate conditions on model separability and initialization, iterative multi-model fitting algorithms converge to a local minimum of the multi-model objective function.
+\end{theorem}
+
+\textbf{Conditions for Convergence:}
+\begin{enumerate}
+    \item \textit{Model Separability}: Models should be sufficiently separated in parameter space
+    \item \textit{Initialization Quality}: Initial model estimates should be within the basin of attraction
+    \item \textit{Noise Characteristics}: Noise should be bounded and have known statistical properties
+\end{enumerate}
+
+\subsection{Performance Comparison}
+\label{subsec:performance_comparison}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lccccc}
+        \toprule
+        \textbf{Method}   & \textbf{Complexity} & \textbf{Accuracy} & \textbf{Robustness} & \textbf{Scalability} & \textbf{Generality} \\
+        \midrule
+        Sequential RANSAC & $O(KN)$             & Medium            & Medium              & Good                 & High                \\
+        Hough Transform   & $O(N \cdot M^d)$    & High              & High                & Poor                 & Medium              \\
+        Preference Matrix & $O(N^2M)$           & High              & Medium              & Medium               & High                \\
+        Sparsity-Based    & $O(N^2K)$           & High              & High                & Medium               & Medium              \\
+        Deep Learning     & $O(N)$              & Variable          & Variable            & Good                 & Low                 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Comparison of multi-model fitting approaches across different criteria. $N$ is the number of data points, $K$ is the number of models, $M$ is the number of model hypotheses, and $d$ is the parameter dimension.}
+    \label{tab:method_comparison}
+\end{table}
+
+\subsection{Future Research Directions}
+\label{subsec:future_directions}
+
+\subsubsection{Theoretical Advances}
+\label{subsubsec:theoretical_advances}
+
+\begin{enumerate}
+    \item \textit{Approximation Algorithms}: Development of polynomial-time approximation algorithms with provable guarantees
+    \item \textit{Sample Complexity}: Tighter bounds on the number of samples required for reliable multi-model fitting
+    \item \textit{Robustness Theory}: Extended robustness analysis for multi-model scenarios
+\end{enumerate}
+
+\subsubsection{Algorithmic Improvements}
+\label{subsubsec:algorithmic_improvements}
+
+\begin{enumerate}
+    \item \textit{Adaptive Methods}: Algorithms that adapt to local data characteristics
+    \item \textit{Hierarchical Approaches}: Multi-scale methods for handling large datasets
+    \item \textit{Hybrid Techniques}: Combining multiple approaches for complementary strengths
+\end{enumerate}
+
+\subsubsection{Application Domains}
+\label{subsubsec:application_domains}
+
+\begin{enumerate}
+    \item \textit{Autonomous Systems}: Real-time multi-model fitting for robotics and autonomous vehicles
+    \item \textit{Medical Imaging}: Robust structure detection in medical image analysis
+    \item \textit{Augmented Reality}: Real-time scene understanding for AR applications
+\end{enumerate}
+
+\subsection{Conclusion}
+\label{subsec:conclusion}
+
+Multi-model fitting represents a fundamental challenge in computer vision that requires sophisticated approaches to handle the inherent complexity of simultaneously clustering data and fitting models. While significant progress has been made in developing robust algorithms, several challenges remain:
+
+\begin{enumerate}
+    \item \textit{Scalability}: Handling large datasets with many models remains computationally challenging
+    \item \textit{Automation}: Reducing the need for manual parameter tuning and threshold selection
+    \item \textit{Generalization}: Developing methods that work across diverse application domains
+\end{enumerate}
+
+The field continues to evolve with contributions from optimization theory, machine learning, and computational geometry. The integration of classical geometric methods with modern deep learning approaches promises to unlock new capabilities in robust multi-model fitting.
+
+\marginpar{Key Takeaway: Success in multi-model fitting requires careful consideration of the application domain, appropriate algorithm selection, and thorough parameter tuning.}
+
+The theoretical foundations presented in this document provide a solid basis for understanding current methods and developing new approaches. As computer vision applications become increasingly complex, the importance of robust multi-model fitting techniques will only continue to grow.
+
+\newpage
+
+% NOTE: Appendices provide additional mathematical details and implementation guides
+\appendix
+
+\section{Mathematical Derivations}
+\label{app:derivations}
+
+\subsection{RANSAC Iteration Count Derivation}
+\label{app:ransac_iterations}
+
+The probability that a randomly selected minimal sample set of size $m$ contains only inliers is:
+\begin{equation}
+    p_{\text{clean}} = (1 - \epsilon)^m
+    \label{eq:prob_clean_sample}
+\end{equation}
+
+The probability that at least one clean sample is selected in $K$ iterations is:
+\begin{align}
+    P_{\text{success}} & = 1 - (1 - p_{\text{clean}})^K \\
+                       & = 1 - (1 - (1-\epsilon)^m)^K
+    \label{eq:success_probability}
+\end{align}
+
+Solving for $K$ given desired success probability $p$:
+\begin{align}
+    p           & = 1 - (1 - (1-\epsilon)^m)^K                   \\
+    1 - p       & = (1 - (1-\epsilon)^m)^K                       \\
+    \log(1 - p) & = K \log(1 - (1-\epsilon)^m)                   \\
+    K           & = \frac{\log(1 - p)}{\log(1 - (1-\epsilon)^m)}
+    \label{eq:ransac_iterations_derivation}
+\end{align}
+
+\subsection{Hough Transform Accumulator Resolution}
+\label{app:hough_resolution}
+
+For line detection using normal parameterization, the resolution requirements are:
+
+\textbf{Angular Resolution:} The minimum angular resolution $\Delta\theta$ should satisfy:
+\begin{equation}
+    \Delta\theta \leq \frac{1}{2\rho_{\max}}
+    \label{eq:angular_resolution}
+\end{equation}
+
+\textbf{Distance Resolution:} The minimum distance resolution $\Delta\rho$ should satisfy:
+\begin{equation}
+    \Delta\rho \leq \frac{\sigma_{\text{noise}}}{2}
+    \label{eq:distance_resolution}
+\end{equation}
+
+where $\sigma_{\text{noise}}$ is the standard deviation of noise in the data.
+
+\section{Implementation Guidelines}
+\label{app:implementation}
+
+\subsection{Pseudo-Code for Key Algorithms}
+\label{app:pseudocode}
+
+\begin{algorithm}[MSAC Implementation]
+    \label{alg:msac_detailed}
+    \textbf{Input:} Data points $\mathcal{D}$, threshold $\tau$, iterations $K$\\
+    \textbf{Output:} Best model $\theta^*$ and inliers $\mathcal{I}^*$
+    \begin{enumerate}
+        \item Initialize: $\text{best\_loss} = \infty$, $\theta^* = \emptyset$, $\mathcal{I}^* = \emptyset$
+        \item For $k = 1$ to $K$:
+              \begin{enumerate}
+                  \item Sample minimal set $\mathcal{S}_k$ randomly from $\mathcal{D}$
+                  \item Fit model $\theta_k$ to $\mathcal{S}_k$
+                  \item Compute loss: $L_k = \sum_{i=1}^N \min(d(\vec{x}_i, \theta_k)^2, \tau^2)$
+                  \item If $L_k < \text{best\_loss}$:
+                        \begin{enumerate}
+                            \item $\text{best\_loss} = L_k$
+                            \item $\theta^* = \theta_k$
+                            \item $\mathcal{I}^* = \{\vec{x}_i : d(\vec{x}_i, \theta_k) \leq \tau\}$
+                        \end{enumerate}
+              \end{enumerate}
+        \item Refine $\theta^*$ using least squares on $\mathcal{I}^*$
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Parameter Selection Guidelines}
+\label{app:parameter_guidelines}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lll}
+        \toprule
+        \textbf{Parameter}          & \textbf{Recommended Range} & \textbf{Selection Criterion} \\
+        \midrule
+        Inlier threshold $\tau$     & $[2\sigma, 3\sigma]$       & Based on noise statistics    \\
+        Min consensus $\tau_{\min}$ & $[m+1, 0.1N]$              & Application dependent        \\
+        Max iterations $K$          & $[100, 10000]$             & Confidence and outlier ratio \\
+        Hough resolution            & $[0.1°, 1°]$               & Accuracy requirements        \\
+        \bottomrule
+    \end{tabular}
+    \caption{Parameter selection guidelines for multi-model fitting algorithms}
+    \label{tab:parameter_guidelines}
+\end{table}
+
+\section{Experimental Validation}
+\label{app:experiments}
+
+\subsection{Synthetic Data Experiments}
+\label{app:synthetic_experiments}
+
+\textbf{Experimental Setup:}
+\begin{itemize}
+    \item Generate synthetic data with known ground truth models
+    \item Add controlled amounts of Gaussian noise and outliers
+    \item Evaluate accuracy, robustness, and computational efficiency
+\end{itemize}
+
+\textbf{Metrics:}
+\begin{align}
+    \text{Precision} & = \frac{|\text{True Positives}|}{|\text{True Positives}| + |\text{False Positives}|}    \\
+    \text{Recall}    & = \frac{|\text{True Positives}|}{|\text{True Positives}| + |\text{False Negatives}|}    \\
+    \text{F1-Score}  & = \frac{2 \cdot \text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
+\end{align}
+
+\subsection{Real Data Evaluation}
+\label{app:real_data}
+
+\textbf{Datasets:}
+\begin{itemize}
+    \item Adelaide RMF Dataset: Multi-model fitting benchmark
+    \item York Urban Database: Urban scene analysis
+    \item KITTI Dataset: Autonomous driving scenarios
+\end{itemize}
+
+\textbf{Performance Metrics:}
+\begin{itemize}
+    \item Model fitting accuracy
+    \item Computational time
+    \item Memory usage
+    \item Robustness to parameter variations
+\end{itemize}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+% NOTE: Add bibliography entries for key papers in multi-model fitting
+% Key references would include:
+% - Fischler & Bolles (1981) - Original RANSAC paper
+% - Torr & Zisserman (2000) - MLESAC
+% - Duda & Hart (1972) - Hough Transform
+% - Magri & Fusiello (2014) - Multiple model fitting survey
+% - Chin et al. (2012) - Robust fitting survey
+
+\end{document}
