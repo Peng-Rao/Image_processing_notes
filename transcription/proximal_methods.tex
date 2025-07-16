@@ -1,0 +1,657 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{algorithmicx, algorithm}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands for notation consistency
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\prox}{prox}
+\DeclareMathOperator{\sign}{sign}
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\abs}[1]{\lvert #1 \rvert}
+\newcommand{\R}{\mathbb{R}}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{example}{Example}[section]
+
+\title{Proximal Gradient Methods for Convex Optimization\\
+\large Lecture Notes on Iterative Soft Thresholding and Sparse Recovery}
+\author{Course: Advanced Optimization Theory}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ================================
+\section{Introduction to Proximal Methods}
+% ================================
+
+\subsection{Motivation and Context}
+
+The fundamental challenge in modern optimization arises when dealing with composite objective functions of the form:
+\begin{equation}\label{eq:composite}
+    \min_{\vec{x} \in \R^n} F(\vec{x}) = f(\vec{x}) + g(\vec{x})
+\end{equation}
+where $f: \R^n \to \R$ is smooth and convex (possessing continuous derivatives), while $g: \R^n \to \R$ is convex but potentially non-smooth. This formulation encompasses a vast array of practical problems in signal processing, machine learning, and statistical inference.
+
+The classical gradient descent method, while elegant and computationally efficient for smooth functions, fails catastrophically when confronted with non-differentiable terms. Consider the paradigmatic example of $\ell_1$-regularized least squares (basis pursuit denoising):
+\begin{equation}\label{eq:lasso}
+    \min_{\vec{x} \in \R^n} \frac{1}{2}\norm{\vec{D}\vec{x} - \vec{b}}_2^2 + \lambda\norm{\vec{x}}_1
+\end{equation}
+where the $\ell_1$ norm $\norm{\vec{x}}_1 = \sum_{i=1}^n \abs{x_i}$ induces sparsity but lacks differentiability at the origin.
+
+\subsection{Historical Development and Applications}
+
+The proximal gradient framework, pioneered by Moreau in the 1960s and extensively developed by Rockafellar, provides an elegant resolution to this dilemma. The method has found widespread applications in:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Compressed Sensing}: Recovery of sparse signals from underdetermined linear measurements
+    \item \textbf{Image Processing}: Total variation denoising, image reconstruction, and restoration
+    \item \textbf{Machine Learning}: Feature selection, sparse coding, and regularized regression
+    \item \textbf{Portfolio Optimization}: Risk-constrained asset allocation with transaction costs
+\end{itemize}
+
+% NOTE: Adding conceptual bridge to next section
+The key insight is to decouple the smooth and non-smooth components, handling each with its appropriate mathematical machinery.
+
+\newpage
+% ================================
+\section{Mathematical Foundations}
+% ================================
+
+\subsection{Convexity and Smoothness}
+
+\begin{definition}[Convex Function]
+    A function $f: \R^n \to \R \cup \{+\infty\}$ is \textit{convex} if its domain $\text{dom}(f)$ is a convex set and for all $\vec{x}, \vec{y} \in \text{dom}(f)$ and $\theta \in [0,1]$:
+    \begin{equation}
+        f(\theta\vec{x} + (1-\theta)\vec{y}) \leq \theta f(\vec{x}) + (1-\theta)f(\vec{y})
+    \end{equation}
+\end{definition}
+
+\begin{definition}[$L$-Smooth Function]\label{def:smooth}
+    A differentiable function $f: \R^n \to \R$ is \textit{$L$-smooth} if its gradient is Lipschitz continuous with constant $L > 0$:
+    \begin{equation}
+        \norm{\nabla f(\vec{x}) - \nabla f(\vec{y})}_2 \leq L\norm{\vec{x} - \vec{y}}_2, \quad \forall \vec{x}, \vec{y} \in \R^n
+    \end{equation}
+\end{definition}
+
+The Lipschitz constant $L$ quantifies the maximum rate of change of the gradient, providing crucial information for algorithm design. For twice-differentiable functions, $L$ corresponds to the maximum eigenvalue of the Hessian matrix over the domain.
+
+\subsection{The Descent Lemma and Majorization}
+
+\begin{lemma}[Descent Lemma]\label{lem:descent}
+    Let $f: \R^n \to \R$ be $L$-smooth. Then for all $\vec{x}, \vec{y} \in \R^n$:
+    \begin{equation}
+        f(\vec{y}) \leq f(\vec{x}) + \langle \nabla f(\vec{x}), \vec{y} - \vec{x} \rangle + \frac{L}{2}\norm{\vec{y} - \vec{x}}_2^2
+    \end{equation}
+\end{lemma}
+
+\begin{proof}[Proof Sketch]
+    By the fundamental theorem of calculus and Cauchy-Schwarz inequality:
+    \begin{align}
+        f(\vec{y}) - f(\vec{x}) & = \int_0^1 \langle \nabla f(\vec{x} + t(\vec{y} - \vec{x})), \vec{y} - \vec{x} \rangle dt                                                                            \\
+                                & = \langle \nabla f(\vec{x}), \vec{y} - \vec{x} \rangle + \int_0^1 \langle \nabla f(\vec{x} + t(\vec{y} - \vec{x})) - \nabla f(\vec{x}), \vec{y} - \vec{x} \rangle dt
+    \end{align}
+    Applying the Lipschitz condition on $\nabla f$ completes the proof.
+\end{proof}
+
+This lemma establishes that any $L$-smooth function can be globally upper-bounded by a quadratic function, leading to the concept of \textit{majorization}.
+
+\begin{definition}[Majorizer]
+    A function $Q(\vec{y}; \vec{x})$ is a \textit{majorizer} of $f$ at $\vec{x}$ if:
+    \begin{enumerate}
+        \item $Q(\vec{y}; \vec{x}) \geq f(\vec{y})$ for all $\vec{y} \in \R^n$ (global upper bound)
+        \item $Q(\vec{x}; \vec{x}) = f(\vec{x})$ (tangency condition)
+    \end{enumerate}
+\end{definition}
+
+For $L$-smooth functions, the descent lemma provides an explicit majorizer:
+\begin{equation}\label{eq:majorizer}
+    Q(\vec{y}; \vec{x}) = f(\vec{x}) + \langle \nabla f(\vec{x}), \vec{y} - \vec{x} \rangle + \frac{L}{2}\norm{\vec{y} - \vec{x}}_2^2
+\end{equation}
+
+\subsection{The Majorize-Minimize Principle}
+
+The majorize-minimize (MM) algorithm generates a sequence $\{\vec{x}^k\}$ by iteratively minimizing majorizers:
+
+\begin{algorithm}
+    \begin{enumerate}
+        \item Initialize $\vec{x}^0 \in \R^n$
+        \item For $k = 0, 1, 2, \ldots$:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Construct majorizer $Q(\vec{y}; \vec{x}^k)$ of $f$ at $\vec{x}^k$
+                  \item Update: $\vec{x}^{k+1} = \argmin_{\vec{y}} Q(\vec{y}; \vec{x}^k)$
+              \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+\begin{theorem}[Monotonic Descent]
+    The MM algorithm produces a monotonically decreasing sequence of function values:
+    \begin{equation}
+        f(\vec{x}^{k+1}) \leq f(\vec{x}^k), \quad \forall k \geq 0
+    \end{equation}
+\end{theorem}
+
+\begin{proof}
+    By the majorization property and the definition of $\vec{x}^{k+1}$:
+    \begin{equation}
+        f(\vec{x}^{k+1}) \leq Q(\vec{x}^{k+1}; \vec{x}^k) \leq Q(\vec{x}^k; \vec{x}^k) = f(\vec{x}^k)
+    \end{equation}
+\end{proof}
+
+% NOTE: Connection to gradient descent
+When applied to the quadratic majorizer \eqref{eq:majorizer}, the MM update becomes:
+\begin{align}
+    \vec{x}^{k+1} & = \argmin_{\vec{y}} \left\{ f(\vec{x}^k) + \langle \nabla f(\vec{x}^k), \vec{y} - \vec{x}^k \rangle + \frac{L}{2}\norm{\vec{y} - \vec{x}^k}_2^2 \right\} \\
+                  & = \vec{x}^k - \frac{1}{L}\nabla f(\vec{x}^k)
+\end{align}
+recovering gradient descent with step size $\gamma = 1/L$.
+
+\newpage
+% ================================
+\section{Proximal Operators and Their Properties}
+% ================================
+
+\subsection{Definition and Geometric Interpretation}
+
+\begin{definition}[Proximal Operator]\label{def:prox}
+    The \textit{proximal operator} of a function $g: \R^n \to \R \cup \{+\infty\}$ is defined as:
+    \begin{equation}
+        \prox_g(\vec{v}) = \argmin_{\vec{x} \in \R^n} \left\{ g(\vec{x}) + \frac{1}{2}\norm{\vec{x} - \vec{v}}_2^2 \right\}
+    \end{equation}
+\end{definition}
+
+The proximal operator admits several interpretations:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Geometric}: Find the point minimizing $g$ that is closest to $\vec{v}$ in Euclidean distance
+    \item \textbf{Regularization}: Balance between minimizing $g$ and staying near $\vec{v}$
+    \item \textbf{Implicit gradient step}: Generalization of gradient descent to non-smooth functions
+\end{itemize}
+
+\begin{remark}
+    For smooth functions, the proximal operator approximates a gradient step. Indeed, if $g$ is differentiable with $L$-Lipschitz gradient, then:
+    \begin{equation}
+        \prox_{\gamma g}(\vec{v}) \approx \vec{v} - \gamma \nabla g(\vec{v}) \quad \text{for small } \gamma
+    \end{equation}
+\end{remark}
+
+\subsection{Scaled Proximal Operators}
+
+For algorithmic purposes, we often work with scaled versions:
+
+\begin{definition}[Scaled Proximal Operator]
+    For $\gamma > 0$, the scaled proximal operator is:
+    \begin{equation}
+        \prox_{\gamma g}(\vec{v}) = \argmin_{\vec{x} \in \R^n} \left\{ g(\vec{x}) + \frac{1}{2\gamma}\norm{\vec{x} - \vec{v}}_2^2 \right\}
+    \end{equation}
+\end{definition}
+
+The scaling parameter $\gamma$ controls the trade-off between minimizing $g$ and proximity to $\vec{v}$. Larger $\gamma$ values allow solutions farther from $\vec{v}$.
+
+\subsection{Properties of Proximal Operators}
+
+\begin{theorem}[Fundamental Properties]
+    Let $g: \R^n \to \R \cup \{+\infty\}$ be a proper, closed, convex function. Then:
+    \begin{enumerate}
+        \item \textbf{Existence and Uniqueness}: $\prox_g(\vec{v})$ exists and is unique for all $\vec{v} \in \R^n$
+        \item \textbf{Firm Non-expansiveness}: For all $\vec{u}, \vec{v} \in \R^n$:
+              \begin{equation}
+                  \norm{\prox_g(\vec{u}) - \prox_g(\vec{v})}_2^2 + \norm{(\vec{u} - \prox_g(\vec{u})) - (\vec{v} - \prox_g(\vec{v}))}_2^2 \leq \norm{\vec{u} - \vec{v}}_2^2
+              \end{equation}
+        \item \textbf{Moreau Decomposition}:
+              \begin{equation}
+                  \vec{v} = \prox_g(\vec{v}) + \prox_{g^*}(\vec{v})
+              \end{equation}
+              where $g^*$ is the Fenchel conjugate of $g$
+    \end{enumerate}
+\end{theorem}
+
+\newpage
+% ================================
+\section{The Proximal Gradient Algorithm}
+% ================================
+
+\subsection{Algorithm Derivation}
+
+Consider the composite optimization problem \eqref{eq:composite}. Applying the MM principle with the majorizer for $f$ while keeping $g$ unchanged:
+\begin{align}
+    \vec{x}^{k+1} & = \argmin_{\vec{y}} \left\{ Q(\vec{y}; \vec{x}^k) + g(\vec{y}) \right\}                                                                                               \\
+                  & = \argmin_{\vec{y}} \left\{ f(\vec{x}^k) + \langle \nabla f(\vec{x}^k), \vec{y} - \vec{x}^k \rangle + \frac{L}{2}\norm{\vec{y} - \vec{x}^k}_2^2 + g(\vec{y}) \right\}
+\end{align}
+
+\begin{proposition}[Equivalent Formulation]
+    The update can be rewritten as:
+    \begin{equation}
+        \vec{x}^{k+1} = \argmin_{\vec{y}} \left\{ g(\vec{y}) + \frac{L}{2}\norm{\vec{y} - (\vec{x}^k - \frac{1}{L}\nabla f(\vec{x}^k))}_2^2 \right\}
+    \end{equation}
+\end{proposition}
+
+\begin{proof}
+    Expanding the quadratic term and using the fact that terms independent of $\vec{y}$ don't affect the minimizer:
+    \begin{align}
+         & \argmin_{\vec{y}} \left\{ g(\vec{y}) + \langle \nabla f(\vec{x}^k), \vec{y} - \vec{x}^k \rangle + \frac{L}{2}\norm{\vec{y} - \vec{x}^k}_2^2 \right\}                                         \\
+         & = \argmin_{\vec{y}} \left\{ g(\vec{y}) + \frac{L}{2}\left[ \norm{\vec{y}}_2^2 - 2\langle \vec{y}, \vec{x}^k - \frac{1}{L}\nabla f(\vec{x}^k) \rangle + \norm{\vec{x}^k}_2^2 \right] \right\} \\
+         & = \argmin_{\vec{y}} \left\{ g(\vec{y}) + \frac{L}{2}\norm{\vec{y} - (\vec{x}^k - \frac{1}{L}\nabla f(\vec{x}^k))}_2^2 \right\}
+    \end{align}
+\end{proof}
+
+This leads to the proximal gradient algorithm:
+
+\begin{algorithm}
+    \begin{enumerate}
+        \item Initialize $\vec{x}^0 \in \R^n$, step size $\gamma = 1/L$
+        \item For $k = 0, 1, 2, \ldots$:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Gradient step: $\vec{z}^k = \vec{x}^k - \gamma \nabla f(\vec{x}^k)$
+                  \item Proximal step: $\vec{x}^{k+1} = \prox_{\gamma g}(\vec{z}^k)$
+              \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Convergence Analysis}
+
+\begin{theorem}[Convergence Rate]\label{thm:convergence}
+    Let $f$ be $L$-smooth and convex, $g$ be closed and convex, and $F = f + g$ have a minimizer $\vec{x}^*$. Then the proximal gradient method with $\gamma = 1/L$ satisfies:
+    \begin{equation}
+        F(\vec{x}^k) - F(\vec{x}^*) \leq \frac{\norm{\vec{x}^0 - \vec{x}^*}_2^2}{2\gamma k} = \frac{L\norm{\vec{x}^0 - \vec{x}^*}_2^2}{2k}
+    \end{equation}
+\end{theorem}
+
+This $O(1/k)$ convergence rate matches gradient descent for smooth problems, demonstrating that non-smoothness doesn't degrade the convergence rate.
+
+\subsection{Practical Step Size Selection}
+
+In practice, the Lipschitz constant $L$ is often unknown. Common strategies include:
+
+\begin{enumerate}
+    \item \textbf{Backtracking Line Search}: Start with an estimate $\hat{L}$ and increase until the descent condition is satisfied
+    \item \textbf{Adaptive Step Sizes}: Use algorithms like FISTA (Fast Iterative Shrinkage-Thresholding Algorithm) with momentum
+    \item \textbf{Conservative Estimates}: Use matrix norm bounds, e.g., $L \leq \norm{\vec{D}^T\vec{D}}_2$ for quadratic functions
+\end{enumerate}
+
+\newpage
+% ================================
+\section{Computing Proximal Operators: The $\ell_1$ Case}
+% ================================
+
+\subsection{Derivation of the Soft Thresholding Operator}
+
+We now derive the proximal operator for the $\ell_1$ norm, which is fundamental for sparse optimization.
+
+\begin{theorem}[Proximal Operator of $\ell_1$ Norm]\label{thm:soft_threshold}
+    The proximal operator of $g(\vec{x}) = \lambda\norm{\vec{x}}_1$ is given by the \textit{soft thresholding operator}:
+    \begin{equation}
+        [\prox_{\lambda\norm{\cdot}_1}(\vec{v})]_i = \begin{cases}
+            v_i - \lambda & \text{if } v_i > \lambda          \\
+            0             & \text{if } \abs{v_i} \leq \lambda \\
+            v_i + \lambda & \text{if } v_i < -\lambda
+        \end{cases}
+    \end{equation}
+\end{theorem}
+
+\begin{proof}
+    The proximal operator computation:
+    \begin{equation}
+        \prox_{\lambda\norm{\cdot}_1}(\vec{v}) = \argmin_{\vec{x}} \left\{ \lambda\sum_{i=1}^n \abs{x_i} + \frac{1}{2}\sum_{i=1}^n (x_i - v_i)^2 \right\}
+    \end{equation}
+
+    Since the objective decomposes across coordinates, we can minimize separately for each $i$:
+    \begin{equation}
+        [\prox_{\lambda\norm{\cdot}_1}(\vec{v})]_i = \argmin_{x_i \in \R} \left\{ \lambda\abs{x_i} + \frac{1}{2}(x_i - v_i)^2 \right\}
+    \end{equation}
+
+    Define $h(x) = \lambda\abs{x} + \frac{1}{2}(x - v)^2$ for scalar $x$ and $v$. We analyze three cases:
+
+    \textbf{Case 1}: $x > 0$. Then $h(x) = \lambda x + \frac{1}{2}(x - v)^2$.
+    \begin{align}
+        \frac{dh}{dx}   & = \lambda + (x - v) = 0 \\
+        \Rightarrow x^* & = v - \lambda
+    \end{align}
+    This is valid only if $x^* > 0$, i.e., $v > \lambda$.
+
+    \textbf{Case 2}: $x < 0$. Then $h(x) = -\lambda x + \frac{1}{2}(x - v)^2$.
+    \begin{align}
+        \frac{dh}{dx}   & = -\lambda + (x - v) = 0 \\
+        \Rightarrow x^* & = v + \lambda
+    \end{align}
+    This is valid only if $x^* < 0$, i.e., $v < -\lambda$.
+
+    \textbf{Case 3}: $x = 0$. The subdifferential condition at $x = 0$ requires:
+    \begin{equation}
+        0 \in \partial h(0) = [-\lambda, \lambda] - v
+    \end{equation}
+    This holds if and only if $\abs{v} \leq \lambda$.
+\end{proof}
+
+\subsection{Compact Representations}
+
+The soft thresholding operator admits several useful representations:
+
+\begin{proposition}[Alternative Forms]
+    \begin{align}
+        \prox_{\lambda\norm{\cdot}_1}(\vec{v}) & = \sign(\vec{v}) \odot \max(\abs{\vec{v}} - \lambda, 0)         \\
+                                               & = \vec{v} - \lambda \cdot \text{proj}_{[-1,1]}(\vec{v}/\lambda)
+    \end{align}
+    where $\odot$ denotes element-wise multiplication and $\text{proj}_{[-1,1]}$ is projection onto the $\ell_\infty$ ball.
+\end{proposition}
+
+\subsection{Comparison with Hard Thresholding}
+
+The soft thresholding operator exhibits markedly different behavior from the hard thresholding operator used in orthogonal matching pursuit:
+
+\begin{definition}[Hard Thresholding]
+    \begin{equation}
+        [\text{hard}_\lambda(\vec{v})]_i = \begin{cases}
+            v_i & \text{if } \abs{v_i} > \lambda    \\
+            0   & \text{if } \abs{v_i} \leq \lambda
+        \end{cases}
+    \end{equation}
+\end{definition}
+
+Key differences:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Continuity}: Soft thresholding is continuous; hard thresholding has jump discontinuities
+    \item \textbf{Bias}: Soft thresholding shrinks all coefficients by $\lambda$; hard thresholding preserves large coefficients unchanged
+    \item \textbf{Optimization}: Soft thresholding arises from convex optimization; hard thresholding from combinatorial selection
+\end{itemize}
+
+\newpage
+% ================================
+\section{The Iterative Soft Thresholding Algorithm (ISTA)}
+% ================================
+
+\subsection{Algorithm Specification}
+
+Combining the proximal gradient framework with the soft thresholding operator yields:
+
+\begin{algorithm}
+    \textbf{Input}: Matrix $\vec{D} \in \R^{m \times n}$, observations $\vec{b} \in \R^m$, regularization parameter $\lambda > 0$\\
+    \textbf{Output}: Sparse solution $\vec{x}^* \approx \argmin_{\vec{x}} \frac{1}{2}\norm{\vec{D}\vec{x} - \vec{b}}_2^2 + \lambda\norm{\vec{x}}_1$
+
+    \begin{enumerate}
+        \item Precompute: $\vec{D}^T\vec{D}$ and $\vec{D}^T\vec{b}$
+        \item Set step size: $\gamma = 1/\norm{\vec{D}^T\vec{D}}_2$
+        \item Initialize: $\vec{x}^0 = \vec{0}$ (or warm start)
+        \item For $k = 0, 1, 2, \ldots$ until convergence:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Gradient step: $\vec{z}^k = \vec{x}^k - \gamma \vec{D}^T(\vec{D}\vec{x}^k - \vec{b})$
+                  \item Soft threshold: $\vec{x}^{k+1} = \text{soft}_{\gamma\lambda}(\vec{z}^k)$
+              \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Computational Complexity}
+
+Per iteration:
+\begin{itemize}[leftmargin=*]
+    \item Matrix-vector products: $O(mn)$ for $\vec{D}\vec{x}^k$ and $\vec{D}^T(\cdot)$
+    \item Soft thresholding: $O(n)$
+    \item Total: $O(mn)$ per iteration
+\end{itemize}
+
+The precomputation of $\vec{D}^T\vec{D}$ requires $O(mn^2)$ operations but is amortized over all iterations.
+
+\subsection{Convergence Guarantees}
+
+\begin{theorem}[ISTA Convergence]
+    Under the conditions of Theorem \ref{thm:convergence}, ISTA produces iterates satisfying:
+    \begin{equation}
+        \frac{1}{2}\norm{\vec{D}\vec{x}^k - \vec{b}}_2^2 + \lambda\norm{\vec{x}^k}_1 - F^* \leq \frac{L\norm{\vec{x}^0 - \vec{x}^*}_2^2}{2k}
+    \end{equation}
+    where $F^*$ is the optimal objective value and $L = \norm{\vec{D}^T\vec{D}}_2$.
+\end{theorem}
+
+\subsection{Acceleration: FISTA}
+
+The Fast ISTA (FISTA) incorporates momentum to achieve $O(1/k^2)$ convergence:
+
+\begin{algorithm}
+    Initialize $\vec{x}^0 = \vec{y}^0$, $t_0 = 1$. For $k = 0, 1, 2, \ldots$:
+    \begin{enumerate}
+        \item $\vec{x}^{k+1} = \text{soft}_{\gamma\lambda}(\vec{y}^k - \gamma \vec{D}^T(\vec{D}\vec{y}^k - \vec{b}))$
+        \item $t_{k+1} = \frac{1 + \sqrt{1 + 4t_k^2}}{2}$
+        \item $\vec{y}^{k+1} = \vec{x}^{k+1} + \frac{t_k - 1}{t_{k+1}}(\vec{x}^{k+1} - \vec{x}^k)$
+    \end{enumerate}
+\end{algorithm}
+
+% NOTE: The momentum term extrapolates based on previous iterates
+The extrapolation step $\vec{y}^{k+1}$ uses information from previous iterates to accelerate convergence, analogous to Nesterov's accelerated gradient method.
+
+\newpage
+% ================================
+\section{Extensions and Advanced Topics}
+% ================================
+
+\subsection{Other Proximal Operators}
+
+The proximal gradient framework extends beyond $\ell_1$ regularization:
+
+\begin{example}[Common Proximal Operators]
+    \begin{enumerate}
+        \item \textbf{$\ell_2$ norm (group sparsity)}:
+              \begin{equation}
+                  \prox_{\lambda\norm{\cdot}_2}(\vec{v}) = \max\left(1 - \frac{\lambda}{\norm{\vec{v}}_2}, 0\right) \vec{v}
+              \end{equation}
+
+        \item \textbf{Indicator function of convex set $C$}:
+              \begin{equation}
+                  \prox_{i_C}(\vec{v}) = \text{proj}_C(\vec{v}) \quad \text{(Euclidean projection)}
+              \end{equation}
+
+        \item \textbf{Nuclear norm (low-rank matrices)}:
+              \begin{equation}
+                  \prox_{\lambda\norm{\cdot}_*}(\vec{V}) = \vec{U}\text{soft}_\lambda(\vec{\Sigma})\vec{V}^T
+              \end{equation}
+              where $\vec{V} = \vec{U}\vec{\Sigma}\vec{V}^T$ is the SVD.
+    \end{enumerate}
+\end{example}
+
+\subsection{Composite Minimization Beyond Sparsity}
+
+The framework $\min_{\vec{x}} f(\vec{x}) + g(\vec{x})$ accommodates diverse applications:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Total Variation Denoising}: $f(\vec{x}) = \frac{1}{2}\norm{\vec{x} - \vec{b}}_2^2$, $g(\vec{x}) = \lambda\norm{\nabla \vec{x}}_1$
+    \item \textbf{Matrix Completion}: $f(\vec{X}) = \frac{1}{2}\norm{\mathcal{P}_\Omega(\vec{X}) - \vec{Y}}_F^2$, $g(\vec{X}) = \lambda\norm{\vec{X}}_*$
+    \item \textbf{Robust PCA}: $\min_{\vec{L},\vec{S}} \norm{\vec{L}}_* + \lambda\norm{\vec{S}}_1$ s.t. $\vec{L} + \vec{S} = \vec{M}$
+\end{itemize}
+
+\subsection{Practical Considerations}
+
+\begin{remark}[Implementation Tips]
+    \begin{enumerate}
+        \item \textbf{Warm Starting}: Use solutions from related problems or previous iterations
+        \item \textbf{Adaptive Parameters}: Adjust $\lambda$ using cross-validation or stability selection
+        \item \textbf{Stopping Criteria}: Monitor relative change in objective: $\frac{\abs{F^{k+1} - F^k}}{1 + \abs{F^k}} < \epsilon$
+        \item \textbf{Preconditioning}: For ill-conditioned $\vec{D}$, use diagonal or approximate inverse preconditioners
+    \end{enumerate}
+\end{remark}
+
+\subsection{Connections to Other Methods}
+
+The proximal gradient framework unifies several algorithmic paradigms:
+
+\begin{theorem}[Special Cases]
+    The proximal gradient method reduces to:
+    \begin{enumerate}
+        \item \textbf{Gradient Descent}: When $g \equiv 0$
+        \item \textbf{Proximal Point Algorithm}: When $f \equiv 0$
+        \item \textbf{Projected Gradient}: When $g = i_C$ (indicator of convex set $C$)
+        \item \textbf{Forward-Backward Splitting}: General formulation for $f$ smooth, $g$ non-smooth
+    \end{enumerate}
+\end{theorem}
+
+\newpage
+% ================================
+\section{Numerical Examples and Applications}
+% ================================
+
+\subsection{Sparse Signal Recovery}
+
+Consider recovering a sparse signal $\vec{x}^* \in \R^{1000}$ with $k = 50$ non-zero entries from $m = 300$ noisy measurements:
+\begin{equation}
+    \vec{b} = \vec{D}\vec{x}^* + \vec{\epsilon}
+\end{equation}
+where $\vec{D} \in \R^{300 \times 1000}$ has i.i.d. Gaussian entries and $\vec{\epsilon} \sim \mathcal{N}(\vec{0}, \sigma^2\vec{I})$.
+
+\begin{example}[ISTA Performance]
+    Key observations from numerical experiments:
+    \begin{itemize}[leftmargin=*]
+        \item \textbf{Parameter Selection}: Optimal $\lambda \approx \sigma\sqrt{2\log n}$ (universal threshold)
+        \item \textbf{Convergence}: $\epsilon$-accurate solution in $O(L/\epsilon)$ iterations
+        \item \textbf{Support Recovery}: Exact support recovery when $\lambda$ properly chosen and signal sufficiently sparse
+    \end{itemize}
+\end{example}
+
+\subsection{Image Denoising with Total Variation}
+
+For image denoising, we solve:
+\begin{equation}
+    \min_{\vec{X} \in \R^{m \times n}} \frac{1}{2}\norm{\vec{X} - \vec{Y}}_F^2 + \lambda \text{TV}(\vec{X})
+\end{equation}
+where $\text{TV}(\vec{X}) = \sum_{i,j} \sqrt{(X_{i+1,j} - X_{i,j})^2 + (X_{i,j+1} - X_{i,j})^2}$ is the isotropic total variation.
+
+The proximal operator of TV requires solving a non-trivial optimization problem, often handled by:
+\begin{itemize}[leftmargin=*]
+    \item Dual formulation and projection onto the dual ball
+    \item Chambolle's algorithm for exact computation
+    \item Split Bregman methods for approximate solutions
+\end{itemize}
+
+\subsection{Portfolio Optimization with Transaction Costs}
+
+In financial applications, we optimize portfolio weights $\vec{w} \in \R^n$ subject to transaction costs:
+\begin{equation}
+    \min_{\vec{w}} \frac{1}{2}\vec{w}^T\vec{\Sigma}\vec{w} - \vec{\mu}^T\vec{w} + \lambda\norm{\vec{w} - \vec{w}_0}_1
+\end{equation}
+where $\vec{\Sigma}$ is the covariance matrix, $\vec{\mu}$ expected returns, and $\vec{w}_0$ current holdings.
+
+The $\ell_1$ penalty on $\vec{w} - \vec{w}_0$ models proportional transaction costs, and ISTA provides an efficient solution method that naturally produces sparse portfolio updates.
+
+\newpage
+% ================================
+\section{Theoretical Guarantees and Optimality}
+% ================================
+
+\subsection{Global Convergence for Convex Problems}
+
+\begin{theorem}[Global Optimality]\label{thm:global}
+    For convex $f$ and $g$, any accumulation point of the ISTA sequence $\{\vec{x}^k\}$ is a global minimizer of $F = f + g$.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+    The proof relies on three key facts:
+    \begin{enumerate}
+        \item The objective sequence $\{F(\vec{x}^k)\}$ is monotonically decreasing and bounded below
+        \item The iterates satisfy a sufficient decrease condition
+        \item The subdifferential of $F$ at accumulation points contains zero
+    \end{enumerate}
+\end{proof}
+
+\subsection{Linear Convergence under Strong Convexity}
+
+When additional structure is present, convergence accelerates dramatically:
+
+\begin{definition}[Strong Convexity]
+    A function $f$ is $\mu$-strongly convex if:
+    \begin{equation}
+        f(\vec{y}) \geq f(\vec{x}) + \langle \nabla f(\vec{x}), \vec{y} - \vec{x} \rangle + \frac{\mu}{2}\norm{\vec{y} - \vec{x}}_2^2
+    \end{equation}
+\end{definition}
+
+\begin{theorem}[Linear Convergence]
+    If $f$ is $\mu$-strongly convex and $L$-smooth, then ISTA with $\gamma = 1/L$ achieves:
+    \begin{equation}
+        \norm{\vec{x}^k - \vec{x}^*}_2 \leq \left(1 - \frac{\mu}{L}\right)^k \norm{\vec{x}^0 - \vec{x}^*}_2
+    \end{equation}
+\end{theorem}
+
+The condition number $\kappa = L/\mu$ determines the convergence rate, with smaller $\kappa$ yielding faster convergence.
+
+\subsection{Recovery Guarantees for Sparse Signals}
+
+Under appropriate conditions on the measurement matrix $\vec{D}$, ISTA provably recovers sparse signals:
+
+\begin{definition}[Restricted Isometry Property]
+    Matrix $\vec{D}$ satisfies the RIP of order $k$ with constant $\delta_k$ if:
+    \begin{equation}
+        (1-\delta_k)\norm{\vec{x}}_2^2 \leq \norm{\vec{D}\vec{x}}_2^2 \leq (1+\delta_k)\norm{\vec{x}}_2^2
+    \end{equation}
+    for all $k$-sparse vectors $\vec{x}$.
+\end{definition}
+
+\begin{theorem}[Sparse Recovery]
+    If $\vec{D}$ satisfies RIP with $\delta_{2k} < \sqrt{2} - 1$ and $\lambda$ is appropriately chosen, then the ISTA solution $\vec{x}^*$ satisfies:
+    \begin{equation}
+        \norm{\vec{x}^* - \vec{x}_0}_2 \leq C_1 \cdot \frac{\norm{\vec{x}_0 - \vec{x}_{0,k}}_1}{\sqrt{k}} + C_2 \cdot \norm{\vec{\epsilon}}_2
+    \end{equation}
+    where $\vec{x}_{0,k}$ is the best $k$-sparse approximation to $\vec{x}_0$.
+\end{theorem}
+
+\newpage
+% ================================
+\section{Summary and Future Directions}
+% ================================
+
+\subsection{Key Takeaways}
+
+The proximal gradient framework provides a powerful and flexible approach to composite optimization:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Generality}: Handles arbitrary combinations of smooth and non-smooth convex functions
+    \item \textbf{Efficiency}: Computational cost comparable to gradient descent
+    \item \textbf{Modularity}: Proximal operators can be computed independently and reused
+    \item \textbf{Convergence}: Achieves optimal rates for first-order methods
+    \item \textbf{Practicality}: Simple implementation with few tuning parameters
+\end{itemize}
+
+\subsection{Current Research Directions}
+
+Active areas of investigation include:
+
+\begin{enumerate}
+    \item \textbf{Stochastic Variants}: Proximal stochastic gradient methods for large-scale learning
+    \item \textbf{Non-convex Extensions}: Proximal methods for weakly convex and difference-of-convex functions
+    \item \textbf{Distributed Algorithms}: Consensus-based proximal methods for decentralized optimization
+    \item \textbf{Adaptive Methods}: Learning problem-specific metrics and preconditioners
+    \item \textbf{Proximal Newton Methods}: Second-order proximal algorithms for faster convergence
+\end{enumerate}
+
+\subsection{Software and Implementation}
+
+Modern optimization packages implementing proximal methods include:
+\begin{itemize}[leftmargin=*]
+    \item \texttt{CVXPY}: High-level convex optimization modeling
+    \item \texttt{ProximalOperators.jl}: Julia library with extensive proximal operator collection
+    \item \texttt{TFOCS}: MATLAB toolbox for first-order conic solvers
+    \item \texttt{scikit-learn}: Includes ISTA/FISTA for Lasso and related problems
+\end{itemize}
+
+\subsection{Concluding Remarks}
+
+The elegance of proximal gradient methods lies in their ability to decompose complex optimization problems into simpler subproblems, each solved with the most appropriate technique. This divide-and-conquer strategy, combined with rigorous convergence guarantees, makes proximal methods indispensable tools in the modern optimization toolkit.
+
+% NOTE: Future lectures will explore proximal operators for other regularizers,
+% connections to augmented Lagrangian methods, and applications in deep learning
+
+\vspace{1cm}
+\hrule
+\vspace{0.5cm}
+
+\end{document}

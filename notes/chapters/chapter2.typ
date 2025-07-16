@@ -4,6 +4,7 @@
 #import "../template.typ": *
 
 = Image Prior
+== Image Denoising Problem
 Image denoising provides a simple and clear problem formulation example. The *_observation model_* is:
 $
   z(x) = y(x) + eta(x)
@@ -31,6 +32,8 @@ The observation model provides a *prior on noise* but we also need a *prior on i
 #definition("Image Prior")[
   An *image prior* is a statistical model that captures the expected structure of natural images. It is used to regularize the denoising process, guiding the estimator towards plausible solutions.
 ]
+
+In this chapter, we will explore various image priors and their applications in denoising. The goal is to leverage the statistical properties of natural images to improve the quality of denoised outputs.
 
 #pagebreak()
 
@@ -103,161 +106,22 @@ Properties of the this estimator:
   caption: [Bias-variance tradeoff in local averaging],
 ) <fig:bias_tradeoff>
 
-== Sparsity-Based Image Prior
-=== Motivation for Sparsity
-Natural images have *sparse representations* in certain transform domains (e.g., DCT), as evidenced by the success of JPEG compression. *Key Insight:* If images can be sparsely represented for compression, this same property can be leveraged for denoising.
-
-=== DCT-Based Denoising Pipeline
-*Step 1 : Analysis*
-$
-  X = D^T S
-$
-where:
-- $S$ is the vectorized image patch
-- $D$ is the DCT basis matrix
-- $X$ is the DCT coefficients vector
-
-*Step 2: Enforce Sparsity (Thresholding)*
-$
-  hat(X)_i = cases(
-    X_i space space "if" abs(X_i) >= gamma,
-    0 space space "if" abs(X_i) < gamma
-  )
-$
-*Important:* Apply thresholding only to the coefficients $i gt.eq 1$ (preserve the DC component).
-\
-*Step 3: Synthesis*
-$
-  hat(S) = D hat(X)
-$
-
-=== Threshold Selection
-#theorem("Universal Thresholding")[
-  For AWGN with variance $sigma^2$, the optimal threshold for denoising is given by:
-  $
-    gamma = sigma sqrt(2 log(n))
-  $
-  where:
-  - $sigma$ is the noise standard deviation
-  - $n$ is the dimension of coefficients vector
-  For $8 times 8$ patches: $gamma approx 3 sigma$
-]
-
-
-== Noise Standard Deviation Estimation
-To use the universal thresholding, we need to estimate $sigma$ from the noisy image itself.
-
-#theorem("Robust Estimation of Noise Standard Deviation")[
-  Given a noisy image $Z$, the noise standard deviation can be estimated using the following robust method:
-  $
-    hat(sigma) = "MAD" / (0.6745 times sqrt(2))
-  $
-  where MAD = Median Absolute Deviation, defined as:
-  $
-    "MAD"(D) = "median"(|D - "median"(D)|)
-  $
-  where $D$ denotes the horizontal differences of the image.
-]
-
-== Sliding DCT Algorithm
-=== Non-Overlapping Tiles (No Aggregation)
-The simplest approach processes the image in non-overlapping $8 times 8$ blocks. Let $Z$ be the noisy image of size $M times N$, partitioned into non-overlapping blocks $B_(i,j)$ of size $8 times 8$. For each block:
-
-$
-  X_(i,j) = "DCT"_2(B_(i,j))
-$
-
-Apply hard thresholding with universal threshold $gamma = 3sigma$:
-$
-  hat(X)_(i,j)(u,v) = cases(
-    X_(i,j)(u,v) quad & "if " abs(X_(i,j)(u,v)) >= gamma,
-    0 quad & "otherwise"
-  )
-$
-
-Reconstruct each block:
-$
-  hat(S)_(i,j) = "IDCT"_2(hat(X)_(i,j))
-$
-
-The final denoised image is the union of all processed blocks:
-$
-  hat(Y) = union.big_(i,j) hat(B)_(i,j)
-$
-
-*Properties:*
-- Complexity: $O(N)$ operations
-- Blocking artifacts due to independent processing
-- Fast but lower quality
-
-=== Sliding Window with Uniform Weights
-For overlapping patches, each pixel receives multiple estimates that must be aggregated.
-
-For each patch position $(i,j)$ with step size $"STEP" = 1$, extract $p times p$ patch $S_(i,j)$ from the noisy image and do the same DCT processing as before, getting the reconstructed patch $hat(S)_(i,j)$.
-
-The denoised image $hat(I)$ is obtained by weighted aggregation:
-
-$
-  hat(I)(m,n) = (sum_(i,j in Omega_(m,n)) w dot hat(S)_(i,j)(m-i, n-j)) / (sum_(i,j in Omega_(m,n)) w + epsilon)
-$
-
-where $w = 1.0$ is the uniform weight, $epsilon = 10^(-8)$ prevents division by zero, and $Omega_(m,n)$ denotes the set of patch positions $(i,j)$ that contain pixel $(m,n)$.
-
-For an image of size $M times N$, each pixel $(m,n)$ can be covered by at most $p times p$ overlapping patches when using unit step size, but the actual number depends on the pixel's position relative to image boundaries.
-
-=== Sparsity-Adaptive Weight Aggregation
-For overlapping patches, each pixel receives multiple estimates that must be aggregated with weights adapted to the sparsity of the thresholded DCT coefficients.
-
-For each patch position $(i,j)$ with step size $"STEP" = 1$, extract $p times p$ patch $S_(i,j)$ from the noisy image, getting the reconstructed patch $hat(S)_(i,j)$.
-
-The sparsity-adaptive weight for each patch is computed based on the number of *non-zero coefficients* after thresholding:
-
-$
-  w_(i,j) = "nnz"(hat(X)_(i,j))
-$
-
-where $"nnz"(hat(X)_(i,j))$ counts the number of non-zero elements in the thresholded DCT coefficient matrix.
-
-The denoised image $hat(I)$ is obtained by sparsity-weighted aggregation:
-
-$
-  hat(I)(m,n) = (sum_(i,j in Omega_(m,n)) w_(i,j) dot hat(S)_(i,j)(m-i, n-j)) / (sum_(i,j in Omega_(m,n)) w_(i,j) + epsilon)
-$
-
-where $epsilon = 10^(-8)$ prevents division by zero, and $Omega_(m,n)$ denotes the set of patch positions $(i,j)$ that contain pixel $(m,n)$.
-
 #pagebreak()
 
-== Wiener Filter
-The *Wiener filter* is a powerful tool for image denoising, particularly when the noise characteristics are known. It operates in the frequency domain, leveraging the DCT coefficients to perform adaptive filtering based on local statistics.
+== Sparsity-Based Image Prior
+Natural images have *sparse representations* in certain *transform domains* (e.g., DCT), as evidenced by the success of JPEG compression. There are two types of sparsity models:
+- *Transform-domain sparsity*: Images can be represented as sparse linear combinations of basis functions in a specific transform domain.
+- *Synthesis Sparse Model*: The synthetic sparse model assumes that a signal (such as an image) can be synthesized through a linear combination of a small number of "atoms." These "atoms" are drawn from a collection known as a *dictionary*.
 
-=== Empirical Wiener Filter
-Let $hat(bold(y))^"HT"$ be the *hard threshold estimate*, with DCT coefficients:
-$
-  hat(bold(x))^"HT" = D^T hat(bold(y))^"HT"
-$
-The empirical Wiener filter attenuates the DCT coefficients as:
-$
-  hat(x)^"Wie"_i = (hat(x)^"HT"_i)^2 / ((hat(x)^"HT"_i)^2 + sigma^2) x_i
-$
-The empirical Wiener estimate is thus:
-$
-  hat(bold(y))^"HT" = D hat(bold(x))^"Wie"
-$
+=== Transform-domain Sparsity
+*Transform-domain sparsity* is a fundamental concept in signal and image processing, asserting that many real-world signals and images, though complex in their original form, can be represented much more efficiently in a different mathematical domain. This efficiency is achieved when, after a specific mathematical transformation, the majority of the resulting coefficients are zero or close to zero, leaving only a few significant, non-zero values that capture the essential information of the original data. Some of the most common and powerful transforms include:
+- *Discrete Cosine Transform (DCT)*: Widely used in image compression (e.g., JPEG), it transforms spatial domain data into frequency domain, emphasizing low-frequency components.
+- *Wavelet Transform*: Decomposes signals into different frequency components, allowing for multi-resolution analysis.
+- *Fourier Transform (DFT)*: Converts signals from time domain to frequency domain, revealing periodic structures.
 
-=== Transform Domain Patch Processing
-
-Given an image $bold(Y)$ of size $M times M$, we extract overlapping patches $bold(P)_(i,j)$ of size $p times p$ centered at pixel $(i,j)$:
-$
-  bold(P)_(i,j) = bold(Y)[i-floor(p/2) : i+floor(p/2), j-floor(p/2) : j+floor(p/2)]
-$
-
-For each patch $bold(P)_(i,j)$, we apply the following procedure:
-+ *Vectorization*: Convert patch to vector $bold(p)_(i,j) in RR^(p^2)$
-+ *Transformation*: Apply orthogonal transform $tilde(bold(p))_(i,j) = bold(T)bold(p)_(i,j)$
-+ *Preliminary Estimation*: Obtain initial estimate $hat(tilde(bold(p)))_(i,j)^((0))$ using a simple denoising method
-+ *Wiener Filtering*: Apply empirical Wiener filter coefficient-wise
-+ *Inverse Transform*: Reconstruct patch $hat(bold(p))_(i,j) = bold(T)^(-1)hat(tilde(bold(p)))_(i,j)$
-
+=== Synthesis Sparse Model
+The *synthesis sparse model* is a mathematical framework used to represent signals or images as linear combinations of a small number of basis functions, known as "atoms." This model is particularly useful in applications like image compression, denoising, and reconstruction, where the goal is to efficiently represent data while preserving essential features. There are two main approaches to synthesis sparse modeling:
+- *Sparse Coding*: In this approach, the signal is expressed as a linear combination of a dictionary of atoms. The goal is to find a sparse representation where only a few coefficients are non-zero, indicating that only a small number of atoms are used to reconstruct the signal. This is often achieved through optimization techniques that minimize the reconstruction error while enforcing sparsity constraints.
+- *Dictionary Learning*: This approach involves learning a dictionary of atoms from a set of training signals. The dictionary is optimized to capture the underlying structure of the data, allowing for efficient representation. The learned dictionary can then be used to represent new signals or images in a sparse manner. Dictionary learning algorithms aim to find a set of basis functions that best represent the training data, often through iterative optimization techniques.
 
 #pagebreak()

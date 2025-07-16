@@ -1,81 +1,56 @@
+#import "@local/simple-note:0.0.1": attention, example, simple-note, zebraw
 #import "@preview/cetz:0.3.4": canvas, draw
 #import "@preview/cetz-plot:0.1.1": chart, plot
-#import "@local/simple-note:0.0.1": *
-== Local Constancy Prior
-Assumption: Images are locally constant within small patches. For a constant signal corrupted by Gaussian noise:
-$
-  hat(y) = 1 / M sum_(i=1)^M z(x_i)
-$
-Properties of the this estimator:
-- *Unbiased:* $EE[hat(y)] = y$ (true signal)
-- *Reduced Variance:* $"Var"[hat(y)] = sigma^2 / M$
+#import "../template.typ": *
 
-*Limitations:* Local averaging introduces _bias_ at edges:
-#let nonum(eq) = math.equation(block: true, numbering: none, eq)
-#nonum(
+= Discrete Cosine Transform (DCT)
+== 1D DCT
+Generate the DCT basis according to the following formula, the $k$-th atom of the DCT basis in dimension $M$ is defined as:
+$
+  "DCT"_k(n) = c_k cos(k pi (2n + 1) / (2M)) space space space n, k = 0, 1, ..., M-1
+$
+where $c_0=sqrt(1 / M)$ and $c_k=sqrt(2 / M)$ for $k eq.not 0$.
+
+For each $k=0, dots, M-1$, just sample each function
+$
+  "DCT"_k(n) = cos(k pi (2n + 1) / (2M))
+$
+at $n=0, dots, M-1$, obtain a vector. Ignore the normalization coefficient. Divide each vector by its $ell_2$ norm.
+
+Mathematically, suppose the image signal is $s in RR^M$.
+$
+  x="dct2"(s)=D^T s
+$
+where $D^T$ represents the *DCT basis matrix*. $x$ contains the *DCT coefficients*, which are a *sparse representation* of $s$.
+
+The *inverse DCT transformation* reconstructs $s$ from $x$:
+$
+  s="idct2"(x)=D x
+$
+
+== 2D DCT
+*2D Discrete Cosine Transform* (DCT) can be used as a dictionary for representing image patches. A small patch of an image is extracted, represented as $s$, with dimension $p times p$. This patch can be *flattened* into a vector of length $M=p^2$, meaning each patch is reshaped into a vector of length $M$. The *2D-DCT* is used to transform the patch $s$ into DCT coefficients $x$.
+
+Suppose the image signal is $S in RR^(M times N)$.The 2D DCT can be decomposed into two *1D DCT* operations:
++ *Column-wise DCT*: apply *1D DCT* to each column of the image patch: $Zeta=D^T S$
++ *Row-wise DCT*: apply *1D DCT* to each column of the image patch: $X^T=D^T Zeta^T arrow X=D^T S D$
+
+#example("JPEG Compression")[
+  The image is divided into non-overlapping $8 times 8$ blocks. Each block is treated separately during the compression process.
+
+  For each $8 times 8$ block, the *DCT* is applied, transforming pixel values into frequency-domain coefficients. Each $8 times 8$ block's coefficients are checked against a compression threshold $tau$, coefficients with absolute values below $tau$ are *discarded*(set to zero). The larger the threshold $tau$, the more coefficients are discarded, leading to *higher compression*.
+
+  The compression ratio is defined as:
   $
-    "Bias" = abs(EE[hat(y)] - y) >> 0 "at discontinuities"
-  $,
-)
+    "Comp Ratio" = 1 - "#Non-zero coefficients" / "#Pixels in the image"
+  $
+  To measure how much the image quality is degraded after compression, *Peak Signal-to-Noise Ratio (PSNR)* is used:
+  $
+    "PSNR" = 10 log_10 (1 / "MSE"(Y, hat(Y)))
+  $
+]
 
-#figure(
-  canvas({
-    import draw: *
-
-    set-style(
-      mark: (fill: black, scale: 1),
-      stroke: (thickness: 0.4pt, cap: "round"),
-    )
-    // Axes
-    line((0, 0), (10, 0), mark: (end: "stealth"))
-    content((10.2, 0), [$x$], anchor: "west")
-
-    line((0, 0), (0, 5), mark: (end: "stealth"))
-    content((0, 5.2), [Intensity], anchor: "south")
-
-    // Step function (thick line)
-    set-style(stroke: (thickness: 1pt))
-    line((0, 1), (5, 1))
-    line((5, 1), (5, 3))
-    line((5, 3), (10, 3))
-
-    // Reset stroke style
-    set-style(stroke: (thickness: 1pt))
-
-    // Labels for flat regions
-    content((2.5, 0.5), [Flat region], anchor: "north")
-    content((7.5, 0.5), [Flat region], anchor: "north")
-
-    // Dashed vertical lines
-    line((2.5, 1), (2.5, 3.5), stroke: (paint: blue, thickness: 1pt, dash: "dashed"))
-    line((7.5, 1), (7.5, 3.5), stroke: (paint: red, thickness: 1pt, dash: "dashed"))
-
-    // Noise points (blue circles)
-    for x in (0.5, 1.5, 2.5, 3.5, 4.5) {
-      circle((x, 1), radius: 0.1, fill: blue.transparentize(70%), stroke: none)
-    }
-
-    // Noise points (red circles)
-    for x in (5.5, 6.5, 7.5, 8.5, 9.5) {
-      circle((x, 3), radius: 0.1, fill: red.transparentize(70%), stroke: none)
-    }
-
-    // Edge annotation with arrow
-    line((4.8, 1.2), (5.2, 2.8), mark: (start: "stealth", end: "stealth"))
-    content((4.6, 2), [Edge], anchor: "east")
-
-    // Top annotations
-    content((2.5, 4), [Unbiased estimation], anchor: "south")
-    content((7.5, 4), [Biased estimation], anchor: "south")
-  }),
-  caption: [Bias-variance tradeoff in local averaging],
-) <fig:bias_tradeoff>
-
-== Sparsity-Based Image Prior
-=== Motivation for Sparsity
-Natural images have *sparse representations* in certain transform domains (e.g., DCT), as evidenced by the success of JPEG compression. *Key Insight:* If images can be sparsely represented for compression, this same property can be leveraged for denoising.
-
-=== DCT-Based Denoising Pipeline
+== DCT-Based Denoising Pipeline
 *Step 1 : Analysis*
 $
   X = D^T S
@@ -99,7 +74,6 @@ $
   hat(S) = D hat(X)
 $
 
-=== Threshold Selection
 #theorem("Universal Thresholding")[
   For AWGN with variance $sigma^2$, the optimal threshold for denoising is given by:
   $
@@ -171,7 +145,7 @@ $
 
 where $w = 1.0$ is the uniform weight, $epsilon = 10^(-8)$ prevents division by zero, and $Omega_(m,n)$ denotes the set of patch positions $(i,j)$ that contain pixel $(m,n)$.
 
-For an image of size $M times N$, each pixel $(m,n)$ can be covered by at most $p times p$ overlapping patches when using unit step size, but the actual number depends on the pixel\'s position relative to image boundaries.
+For an image of size $M times N$, each pixel $(m,n)$ can be covered by at most $p times p$ overlapping patches when using unit step size, but the actual number depends on the pixel's position relative to image boundaries.
 
 === Sparsity-Adaptive Weight Aggregation
 For overlapping patches, each pixel receives multiple estimates that must be aggregated with weights adapted to the sparsity of the thresholded DCT coefficients.
@@ -195,3 +169,77 @@ $
 where $epsilon = 10^(-8)$ prevents division by zero, and $Omega_(m,n)$ denotes the set of patch positions $(i,j)$ that contain pixel $(m,n)$.
 
 #pagebreak()
+
+== Wiener Filter
+The *Wiener filter* is a powerful tool for image denoising, particularly when the noise characteristics are known. It operates in the frequency domain, leveraging the DCT coefficients to perform adaptive filtering based on local statistics.
+
+=== Empirical Wiener Filter
+Let $hat(bold(y))^"HT"$ be the *hard threshold estimate*, with DCT coefficients:
+$
+  hat(bold(x))^"HT" = D^T hat(bold(y))^"HT"
+$
+The empirical Wiener filter attenuates the DCT coefficients as:
+$
+  hat(x)^"Wie"_i = (hat(x)^"HT"_i)^2 / ((hat(x)^"HT"_i)^2 + sigma^2) x_i
+$
+The empirical Wiener estimate is thus:
+$
+  hat(bold(y))^"HT" = D hat(bold(x))^"Wie"
+$
+
+=== Transform Domain Patch Processing
+
+Given an image $bold(Y)$ of size $M times M$, we extract overlapping patches $bold(P)_(i,j)$ of size $p times p$ centered at pixel $(i,j)$:
+$
+  bold(P)_(i,j) = bold(Y)[i-floor(p/2) : i+floor(p/2), j-floor(p/2) : j+floor(p/2)]
+$
+
+For each patch $bold(P)_(i,j)$, we apply the following procedure:
++ *Vectorization*: Convert patch to vector $bold(p)_(i,j) in RR^(p^2)$
++ *Transformation*: Apply orthogonal transform $tilde(bold(p))_(i,j) = bold(T)bold(p)_(i,j)$
++ *Preliminary Estimation*: Obtain initial estimate $hat(tilde(bold(p)))_(i,j)^((0))$ using a simple denoising method
++ *Wiener Filtering*: Apply empirical Wiener filter coefficient-wise
++ *Inverse Transform*: Reconstruct patch $hat(bold(p))_(i,j) = bold(T)^(-1)hat(tilde(bold(p)))_(i,j)$
+
+#pagebreak()
+
+== The Sparsity Problem
+While orthonormal bases provide computational convenience and guarantee unique representations, they suffer from a fundamental limitation: _no single orthonormal basis can provide sparse representations for all signals of interest_.
+
+#example("DCT Basis Limitation")[
+  Consider a signal $bold(s)_0 in RR^n$ that admits a sparse representation with respect to the Discrete Cosine Transform (DCT) basis $bold(D)_"DCT"$:
+
+  $ bold(s_0) = bold(D)_"DCT" bold(x_0) $
+
+  where $bold(x_0)$ is sparse (most entries are zero).
+
+  Now consider the modified signal:
+
+  $ bold(s) = bold(s_0) + lambda bold(e_j) $
+
+  where $bold(e_j)$ is the $j$-th canonical basis vector and $lambda in RR$ is a scaling factor.
+
+  The DCT representation of $bold(s)$ becomes:
+
+  $
+    bold(x) = bold(D)_"DCT"^T bold(s) = bold(D)_"DCT"^T bold(s_0) + lambda bold(D)_"DCT"^T bold(e_j) = bold(x_0) + lambda bold(D)_"DCT"^T bold(e_j)
+  $
+
+  Since $bold(D)_"DCT"^T bold(e_j)$ is typically dense (all entries are non-zero), the addition of a single spike destroys the sparsity of the representation.
+]
+
+== Experimental Demonstration
+
+// NOTE: This section would typically include figures showing the DCT coefficients before and after adding a spike
+
+The experimental verification of this limitation involves:
+
+1. Generate a sparse signal $bold(s_0)$ with respect to DCT basis
+2. Add a single spike: $bold(s) = bold(s_0) + lambda bold(e_j)$
+3. Compute DCT coefficients of both signals
+4. Observe the loss of sparsity in the modified signal
+
+The results consistently show that the addition of a single spike causes all DCT coefficients to become significant, effectively destroying the sparse structure that denoising algorithms rely upon.
+
+#pagebreak()
+
