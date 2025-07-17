@@ -2,14 +2,6 @@
 #import "@preview/cetz:0.3.4": canvas, draw
 #import "@preview/cetz-plot:0.1.1": chart, plot
 #import "../template.typ": *
-#let trace = $op("trace")$
-#let rank = $op("rank")$
-#let prox = $op("prox")$
-#let argmin = $op("arg min", limits: #true)$
-#let argmax = $op("arg max", limits: #true)$
-#let shrink = $op("shrink")$
-#let Var = $op("Var")$
-#let sign = $op("sign")$
 
 = Structured Sparsity
 The classical sparse coding framework seeks representations with minimal non-zero coefficients, treating each coefficient independently. However, in many practical applications, the _locations_ of non-zero coefficients exhibit inherent structure that standard sparsity models fail to exploit. Structured sparsity extends the sparse coding paradigm by incorporating prior knowledge about coefficient patterns, leading to more robust and interpretable representations.

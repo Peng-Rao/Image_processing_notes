@@ -1,113 +1,10 @@
 #import "@local/simple-note:0.0.1": attention, example, simple-note, zebraw
 #import "@preview/cetz:0.3.4": canvas, draw
 #import "@preview/cetz-plot:0.1.1": chart, plot
-#import "@preview/ctheorems:1.1.3": *
-#show: thmrules
-#show: zebraw
-#show: simple-note.with(
-  title: [ Image Processing ],
-  date: datetime(year: 2025, month: 2, day: 17),
-  authors: (
-    (
-      name: "Rao",
-      github: "https://github.com/Peng-Rao",
-      homepage: "https://github.com/Peng-Rao",
-    ),
-  ),
-  affiliations: (
-    (
-      id: "1",
-      name: "Politecnico di Milano",
-    ),
-  ),
-  // cover-image: "./figures/polimi_logo.png",
-  background-color: "#DDEEDD",
-)
-#let definition = thmbox("definition", "Definition", inset: (x: 0em, top: 0em))
-#let proposition = thmbox("proposition", "Proposition", inset: (x: 0em, top: 0em))
-#let theorem = thmbox("theorem", "Theorem", inset: (x: 0em, top: 0em))
-#let lemma = thmbox("lemma", "Lemma", inset: (x: 0em, top: 0em))
-#set math.mat(delim: "[")
-#set math.vec(delim: "[")
-#set math.equation(supplement: [Eq.])
-
-#let nonum(eq) = math.equation(block: true, numbering: none, eq)
-#let firebrick(body) = text(fill: rgb("#b22222"), body)
-
-#pagebreak()
-
-= Sparse Coding in $ell_1$ sense
-The $ell_0$ norm, defined as the number of non-zero components in a vector, provides the most intuitive measure of sparsity. However, optimization problems involving the $ell_0$ norm are NP-hard due to their combinatorial nature. This computational intractability necessitates the exploration of alternative sparsity-promoting norms that maintain favorable optimization properties.
-
-The $ell_1$ optimization problem for sparse coding can be formulated in two equivalent ways:
-
-#definition([Constrained $ell_1$ Problem (P1)])[
-  $
-    min_(bold(x)) norm(bold(x))_1 quad "subject to" quad norm(bold(A) bold(x) - bold(b))_2 <= epsilon
-  $
-] <def:p1_problem>
-
-#definition([Regularized $ell_1$ Problem (P2)])[
-  $
-    min_(bold(x)) 1/2 norm(bold(A) bold(x) - bold(b))_2^2 + lambda norm(bold(x))_1
-  $
-] <def:p2_problem>
-
-#attention("Connection to LASSO")[
-  The regularized formulation (P2) is known in statistics as the Least Absolute Shrinkage and Selection Operator (LASSO), introduced by Robert Tibshirani.
-
-  While LASSO and sparse coding share the same mathematical formulation, they operate in different contexts:
-  - *LASSO*: Overdetermined systems ($m > n$) for variable selection
-  - *Sparse Coding*: Underdetermined systems ($m < n$) for signal representation
-]
-
-These formulations represent two different perspectives on the same underlying optimization challenge:
-- *P1* minimizes sparsity subject to a constraint on approximation error
-- *P2* balances approximation error and sparsity through a regularization parameter $lambda$
-
-The equivalence between these formulations is established through the relationship between the constraint parameter $epsilon$ in P1 and the regularization parameter $lambda$ in P2, though this relationship is generally implicit and problem-dependent.
-
-#pagebreak()
-
-== Problem Components Analysis
-=== Data Fidelity Term
-The term $1/2 norm(bold(A) bold(x) - bold(b))_2^2$ serves as the data fidelity term, ensuring that the solution $bold(x)$ produces a reconstruction $bold(A) bold(x)$ that is close to the observed signal $bold(b)$.
-
-#proposition("Properties of Data Fidelity Term")[
-  The data fidelity term $g(bold(x)) = 1/2 norm(bold(A) bold(x) - bold(b))_2^2$ is:
-  + Convex (as a composition of convex functions)
-  + Differentiable with gradient $nabla g(bold(x)) = bold(A)^T (bold(A) bold(x) - bold(b))$
-  + Strongly convex if $bold(A)$ has full column rank
-]
-
-=== Regularization Term
-The term $lambda norm(bold(x))_1$ acts as a regularization term, promoting sparsity in the solution.
-
-#proposition([Properties of $ell_1$ Regularization])[
-  The regularization term $h(bold(x)) = norm(bold(x))_1$ is:
-  + Convex
-  + Non-differentiable at $x_i = 0$ for any component $i$
-  + Promotes sparsity through its geometric properties
-]
-
-== Proximal Gradient Methods
-For the composite optimization problem $min_(bold(x)) f(bold(x)) + g(bold(x))$ where $f$ is smooth and $g$ is non-smooth, we introduce the proximal operator.
-
-#definition("Proximal Operator")[
-  The proximal operator of a function $g$ with parameter $lambda > 0$ is defined as:
-  $
-    "prox"_(lambda g)(bold(v)) = arg min_(bold(x)) {1/(2lambda) norm(bold(x) - bold(v))_2^2 + g(bold(x))}
-  $
-]
-
-#pagebreak()
+#import "../template.typ": *
 
 = Dictionary Learning
 == Introduction to Dictionary Learning
-*Dictionary learning* represents a fundamental paradigm in signal processing and machine learning, where the objective is to discover optimal sparse representations of data. Unlike traditional approaches that rely on pre-constructed bases such as the Discrete Cosine Transform (DCT) or Principal Component Analysis (PCA), dictionary learning adapts the representation to the specific characteristics of the training data.
-
-The concept of dictionary learning emerged from the intersection of sparse coding theory and matrix factorization techniques. While classical orthogonal transforms like DCT and PCA provide optimal representations for specific signal classes, they often fail to capture the intrinsic structure of complex, real-world data.
-
 #definition("Dictionary Learning Problem")[
   Given a set of training signals $bold(y)_1, bold(y)_2, ..., bold(y)_N in RR^n$, the dictionary learning problem seeks to find:
   + A dictionary matrix $bold(D) in RR^{n times m}$ with $m > n$ (redundant dictionary)
@@ -235,6 +132,5 @@ where $bold(x)_(j_0)^R$ contains only the non-zero elements of $bold(x)_(j_0)^T$
 + Update dictionary: $bold(d)_(j_0) = bold(u)_1$
 + Update coefficients: $bold(x)_(j_0)^R = sigma_1 bold(v)_1$
 + Restore to full representation: $bold(x)_(j_0)^T (Omega_(j_0)) = bold(x)_(j_0)^R$
-
 
 #pagebreak()

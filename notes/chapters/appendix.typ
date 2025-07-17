@@ -13,7 +13,6 @@
 The span represents the set of all possible linear combinations of the given vectors, forming a vector subspace of $RR^m$. This concept is fundamental to understanding how different sets of vectors can generate different subspaces.
 
 == Linear Independence and Basis
-
 #definition("Linear Independence")[
   A set of vectors ${bold(v)_1, bold(v)_2, ..., bold(v)_n}$ is _linearly independent_ if and only if:
 

@@ -30,4 +30,6 @@
 #include "chapters/chapter5.typ"
 #include "chapters/chapter6.typ"
 #include "chapters/chapter7.typ"
+#include "chapters/chapter8.typ"
+#include "chapters/chapter9.typ"
 #include "chapters/appendix.typ"
