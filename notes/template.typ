@@ -15,6 +15,9 @@
 #let diag = $op("diag")$
 #let MSE = $op("MSE")$
 #let Bias = $op("Bias")$
+#let RR = $bb(R)$
+#let EE = $bb(E)$
+#let rank = $op("rank")$
 
 #let nonum(eq) = math.equation(block: true, numbering: none, eq)
 #let firebrick(body) = text(fill: rgb("#b22222"), body)

@@ -176,8 +176,6 @@ The ordinary least squares approach measures error along the vertical axis, whic
     \item \textbf{Scale dependency}: The error metric depends on the coordinate system orientation.
 \end{enumerate}
 
-\marginpar{Important: Vertical distance becomes problematic for steep lines!}
-
 \newpage
 %=====================================
 \section{The Direct Linear Transformation (DLT) Algorithm}
@@ -509,41 +507,4 @@ Beyond consensus set size, additional metrics help evaluate model quality:
     \item \textbf{Geometric consistency}: Preservation of known geometric relationships
     \item \textbf{Cross-validation}: Performance on held-out data
 \end{enumerate}
-
-%=====================================
-\section{Conclusion and Future Directions}
-%=====================================
-
-\subsection{Summary of Key Concepts}
-
-We have explored the fundamental challenge of robust model fitting in computer vision:
-
-\begin{itemize}
-    \item Classical least squares methods fail catastrophically with outliers due to their zero breakdown point
-    \item The DLT algorithm elegantly handles geometric ambiguities through SVD-based constrained optimization
-    \item RANSAC and its variants provide practical robust solutions through consensus maximization
-    \item M-estimators offer a statistical framework for understanding robustness
-\end{itemize}
-
-\subsection{Open Research Problems}
-
-Several challenging problems remain active areas of research:
-
-\begin{enumerate}
-    \item \textbf{Optimal sampling}: How to minimally sample while maximizing information gain?
-    \item \textbf{Model selection}: Automatically determining the number of models in multi-model scenarios
-    \item \textbf{Non-rigid fitting}: Extending robust methods to deformable models
-    \item \textbf{Real-time performance}: Achieving millisecond-level performance for mobile applications
-    \item \textbf{Uncertainty quantification}: Providing reliable confidence intervals for robust estimates
-\end{enumerate}
-
-\subsection{Recommended Further Reading}
-
-\begin{itemize}
-    \item Hartley \& Zisserman, "Multiple View Geometry in Computer Vision" - comprehensive treatment of geometric fitting
-    \item Rousseeuw \& Leroy, "Robust Regression and Outlier Detection" - statistical foundations
-    \item Fischler \& Bolles, "Random Sample Consensus: A Paradigm for Model Fitting" - original RANSAC paper
-    \item Torr \& Zisserman, "MLESAC: A New Robust Estimator with Application to Estimating Image Geometry" - maximum likelihood extensions
-\end{itemize}
-
 \end{document}
