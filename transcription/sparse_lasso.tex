@@ -1,0 +1,467 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\argmax}{arg\,max}
+\DeclareMathOperator{\prox}{prox}
+\DeclareMathOperator{\shrink}{shrink}
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\diag}{diag}
+\DeclareMathOperator{\trace}{trace}
+\DeclareMathOperator{\rank}{rank}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{example}{Example}[section]
+\newtheorem{remark}{Remark}[section]
+
+\title{Structured Sparsity, Mixed Norms, and Statistical Connections: From Joint Sparsity to LASSO}
+\author{Lecture Notes on Advanced Sparse Representations}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+%=====================================
+\section{Introduction to Structured Sparsity}
+%=====================================
+
+\subsection{Motivation and Overview}
+
+The classical sparse coding framework seeks representations with minimal non-zero coefficients, treating each coefficient independently. However, in many practical applications, the \textit{locations} of non-zero coefficients exhibit inherent structure that standard sparsity models fail to exploit. Structured sparsity extends the sparse coding paradigm by incorporating prior knowledge about coefficient patterns, leading to more robust and interpretable representations.
+
+Consider the fundamental sparse coding problem:
+\begin{equation}
+    \min_{\vec{x}} \frac{1}{2}\|\vec{y} - \vec{D}\vec{x}\|_2^2 + \lambda\|\vec{x}\|_0
+    \label{eq:basic_sparse}
+\end{equation}
+where $\vec{y} \in \mathbb{R}^m$ represents the observed signal, $\vec{D} \in \mathbb{R}^{m \times n}$ denotes an overcomplete dictionary with $n > m$, and $\vec{x} \in \mathbb{R}^n$ contains the sparse coefficients.
+
+% NOTE: The transition from L0 to structured norms requires careful mathematical justification
+This formulation promotes sparsity uniformly across all coefficients. However, structured sparsity recognizes that coefficients often exhibit dependencies or groupings that reflect the underlying data generation process.
+
+\subsection{Applications Motivating Structured Sparsity}
+
+\begin{enumerate}[label=(\alph*)]
+    \item \textbf{Multi-channel Signal Processing}: When processing multiple signals acquired from the same source (e.g., multi-electrode recordings, hyperspectral imaging), the active atoms in the dictionary tend to be consistent across channels.
+
+    \item \textbf{Texture Analysis}: Patches extracted from textured images share common structural elements, suggesting that their sparse representations should utilize similar dictionary atoms.
+
+    \item \textbf{Statistical Variable Selection}: In high-dimensional regression problems, predictors often form natural groups (e.g., dummy variables for categorical features, measurements from the same instrument).
+\end{enumerate}
+
+\newpage
+
+%=====================================
+\section{Joint Sparsity and Mixed Norms}
+%=====================================
+
+\subsection{Problem Formulation}
+
+Let $\vec{Y} = [\vec{y}_1, \vec{y}_2, \ldots, \vec{y}_L] \in \mathbb{R}^{m \times L}$ represent a collection of $L$ signals sharing common structural properties. The joint sparse coding problem seeks a coefficient matrix $\vec{X} = [\vec{x}_1, \vec{x}_2, \ldots, \vec{x}_L] \in \mathbb{R}^{n \times L}$ such that:
+
+\begin{equation}
+    \vec{Y} \approx \vec{D}\vec{X}
+    \label{eq:joint_approx}
+\end{equation}
+
+The key insight is that columns of $\vec{X}$ should not only be individually sparse but should also share common support patterns.
+
+\subsection{Mixed Norms for Matrices}
+
+To enforce joint sparsity, we introduce the $(p,q)$-mixed norm for matrices.
+
+\begin{definition}[$\ell_{p,q}$ Mixed Norm]
+    \label{def:mixed_norm}
+    For a matrix $\vec{X} \in \mathbb{R}^{n \times L}$, the $(p,q)$-mixed norm is defined as:
+    \begin{equation}
+        \|\vec{X}\|_{p,q} = \left(\sum_{i=1}^{n} \left(\sum_{j=1}^{L} |X_{ij}|^p\right)^{q/p}\right)^{1/q}
+        \label{eq:mixed_norm_def}
+    \end{equation}
+\end{definition}
+
+% NOTE: The order of norms is crucial - first p-norm across columns, then q-norm across rows
+This can be interpreted as:
+\begin{align}
+    \|\vec{X}\|_{p,q} & = \left\|\left[\|\vec{x}^{(1)}\|_p, \|\vec{x}^{(2)}\|_p, \ldots, \|\vec{x}^{(n)}\|_p\right]^T\right\|_q \\
+                      & = \|\vec{v}\|_q
+\end{align}
+where $\vec{x}^{(i)}$ denotes the $i$-th row of $\vec{X}$, and $v_i = \|\vec{x}^{(i)}\|_p$.
+
+\subsubsection{Special Cases and Properties}
+
+\begin{enumerate}
+    \item \textbf{Frobenius Norm}: When $p = q = 2$:
+          \begin{equation}
+              \|\vec{X}\|_{2,2} = \sqrt{\sum_{i,j} |X_{ij}|^2} = \|\vec{X}\|_F
+          \end{equation}
+
+    \item \textbf{Entry-wise Norms}: When $p = q$, the mixed norm reduces to the vectorized $\ell_p$ norm:
+          \begin{equation}
+              \|\vec{X}\|_{p,p} = \|\text{vec}(\vec{X})\|_p
+          \end{equation}
+
+    \item \textbf{Joint Sparsity Norm}: The $\ell_{2,1}$ norm:
+          \begin{equation}
+              \|\vec{X}\|_{2,1} = \sum_{i=1}^{n} \sqrt{\sum_{j=1}^{L} |X_{ij}|^2} = \sum_{i=1}^{n} \|\vec{x}^{(i)}\|_2
+              \label{eq:l21_norm}
+          \end{equation}
+\end{enumerate}
+
+\begin{remark}
+    The $\ell_{2,1}$ norm promotes row-sparsity in $\vec{X}$, meaning entire rows become zero. This corresponds to selecting the same dictionary atoms across all signals.
+\end{remark}
+
+\newpage
+
+%=====================================
+\section{Optimization with Proximal Methods}
+%=====================================
+
+\subsection{Joint Sparse Coding Formulation}
+
+The joint sparse coding problem with the $\ell_{2,1}$ norm regularization is formulated as:
+\begin{equation}
+    \min_{\vec{X} \in \mathbb{R}^{n \times L}} \frac{1}{2}\|\vec{Y} - \vec{D}\vec{X}\|_F^2 + \lambda\|\vec{X}\|_{2,1}
+    \label{eq:joint_sparse_opt}
+\end{equation}
+
+This optimization problem combines a smooth, convex data fidelity term with a non-smooth but convex regularizer, making it amenable to proximal gradient methods.
+
+\subsection{Proximal Gradient Algorithm}
+
+The iterative solution via proximal gradient descent follows:
+\begin{equation}
+    \vec{X}^{(k+1)} = \prox_{\gamma\lambda\|\cdot\|_{2,1}}\left(\vec{X}^{(k)} - \gamma\nabla f(\vec{X}^{(k)})\right)
+    \label{eq:prox_grad_update}
+\end{equation}
+
+where $f(\vec{X}) = \frac{1}{2}\|\vec{Y} - \vec{D}\vec{X}\|_F^2$ is the smooth part, and $\gamma > 0$ is the step size.
+
+\subsubsection{Gradient Computation}
+
+The gradient of the Frobenius norm term is:
+\begin{align}
+    \nabla f(\vec{X}) & = \nabla_{\vec{X}}\left[\frac{1}{2}\trace\left((\vec{Y} - \vec{D}\vec{X})^T(\vec{Y} - \vec{D}\vec{X})\right)\right] \\
+                      & = -\vec{D}^T(\vec{Y} - \vec{D}\vec{X})                                                                              \\
+                      & = \vec{D}^T\vec{D}\vec{X} - \vec{D}^T\vec{Y}
+    \label{eq:gradient_computation}
+\end{align}
+
+% NOTE: The trace formulation is useful for matrix calculus
+\subsection{Proximal Mapping of the $\ell_{2,1}$ Norm}
+
+The key computational challenge lies in evaluating the proximal mapping:
+\begin{equation}
+    \prox_{\tau\|\cdot\|_{2,1}}(\vec{Z}) = \argmin_{\vec{X}} \left\{\tau\|\vec{X}\|_{2,1} + \frac{1}{2}\|\vec{X} - \vec{Z}\|_F^2\right\}
+    \label{eq:prox_l21_def}
+\end{equation}
+
+\begin{theorem}[Row-wise Separability of $\ell_{2,1}$ Proximal Mapping]
+    \label{thm:row_separability}
+    The proximal mapping of the $\ell_{2,1}$ norm can be computed row-wise:
+    \begin{equation}
+        [\prox_{\tau\|\cdot\|_{2,1}}(\vec{Z})]_i = \shrink_{\tau}^{(2)}(\vec{z}^{(i)})
+    \end{equation}
+    where $\vec{z}^{(i)}$ is the $i$-th row of $\vec{Z}$, and $\shrink_{\tau}^{(2)}$ is the multivariate soft-thresholding operator.
+\end{theorem}
+
+\begin{proof}[Proof Sketch]
+    The objective function in \eqref{eq:prox_l21_def} can be rewritten as:
+    \begin{align}
+        \tau\|\vec{X}\|_{2,1} + \frac{1}{2}\|\vec{X} - \vec{Z}\|_F^2 & = \tau\sum_{i=1}^{n}\|\vec{x}^{(i)}\|_2 + \frac{1}{2}\sum_{i=1}^{n}\|\vec{x}^{(i)} - \vec{z}^{(i)}\|_2^2 \\
+                                                                     & = \sum_{i=1}^{n}\left[\tau\|\vec{x}^{(i)}\|_2 + \frac{1}{2}\|\vec{x}^{(i)} - \vec{z}^{(i)}\|_2^2\right]
+    \end{align}
+    Since the objective decomposes into independent row-wise problems, the minimization can be performed separately for each row.
+\end{proof}
+
+\subsubsection{Multivariate Soft-Thresholding Operator}
+
+\begin{definition}[Multivariate Soft-Thresholding]
+    \label{def:multi_soft_thresh}
+    For a vector $\vec{v} \in \mathbb{R}^L$ and threshold $\tau > 0$:
+    \begin{equation}
+        \shrink_{\tau}^{(2)}(\vec{v}) = \begin{cases}
+            \frac{\vec{v}}{\|\vec{v}\|_2} \cdot \max(0, \|\vec{v}\|_2 - \tau) & \text{if } \vec{v} \neq \vec{0} \\
+            \vec{0}                                                           & \text{if } \vec{v} = \vec{0}
+        \end{cases}
+        \label{eq:multi_soft_thresh}
+    \end{equation}
+\end{definition}
+
+This operator exhibits two key behaviors:
+\begin{enumerate}
+    \item \textbf{Nullification}: If $\|\vec{v}\|_2 \leq \tau$, the entire vector is set to zero.
+    \item \textbf{Shrinkage}: If $\|\vec{v}\|_2 > \tau$, the vector is scaled down while preserving its direction.
+\end{enumerate}
+
+\newpage
+
+%=====================================
+\section{Group Sparsity and Extensions}
+%=====================================
+
+\subsection{Group Structure in Dictionaries}
+
+Consider a dictionary $\vec{D}$ partitioned into $G$ groups:
+\begin{equation}
+    \vec{D} = [\vec{D}_1 | \vec{D}_2 | \cdots | \vec{D}_G]
+\end{equation}
+where $\vec{D}_g \in \mathbb{R}^{m \times n_g}$ contains atoms corresponding to group $g$, and $\sum_{g=1}^{G} n_g = n$.
+
+The coefficient vector $\vec{x}$ is correspondingly partitioned:
+\begin{equation}
+    \vec{x} = \begin{bmatrix} \vec{x}_{[1]} \\ \vec{x}_{[2]} \\ \vdots \\ \vec{x}_{[G]} \end{bmatrix}
+\end{equation}
+where $\vec{x}_{[g]} \in \mathbb{R}^{n_g}$ contains coefficients for group $g$.
+
+\subsection{Group LASSO Formulation}
+
+The group sparse coding problem seeks representations that activate entire groups rather than individual atoms:
+\begin{equation}
+    \min_{\vec{x}} \frac{1}{2}\|\vec{y} - \vec{D}\vec{x}\|_2^2 + \lambda\sum_{g=1}^{G} w_g\|\vec{x}_{[g]}\|_2
+    \label{eq:group_lasso}
+\end{equation}
+
+where $w_g > 0$ are group-specific weights, typically set as $w_g = \sqrt{n_g}$ to account for group size differences.
+
+\begin{remark}
+    The group LASSO penalty induces sparsity at the group level: either all coefficients within a group are zero, or the group is active with potentially multiple non-zero coefficients.
+\end{remark}
+
+\subsection{Proximal Operator for Group LASSO}
+
+The proximal mapping for the group LASSO penalty decomposes into group-wise operations:
+\begin{equation}
+    [\prox_{\tau\sum_g w_g\|\cdot\|_2}(\vec{z})]_{[g]} = \shrink_{\tau w_g}^{(2)}(\vec{z}_{[g]})
+\end{equation}
+
+This allows efficient computation by applying multivariate soft-thresholding to each group independently.
+
+\newpage
+
+%=====================================
+\section{Statistical Perspective: The LASSO}
+%=====================================
+
+\subsection{Linear Regression Framework}
+
+In the statistical setting, we observe $m$ samples with response variable $y_i$ and $n$ predictors $\vec{x}_i = [x_{i1}, x_{i2}, \ldots, x_{in}]^T$. The linear model assumes:
+\begin{equation}
+    y_i = \vec{x}_i^T\vec{\beta} + \epsilon_i, \quad i = 1, 2, \ldots, m
+    \label{eq:linear_model}
+\end{equation}
+
+In matrix notation:
+\begin{equation}
+    \vec{y} = \vec{X}\vec{\beta} + \vec{\epsilon}
+\end{equation}
+where $\vec{y} \in \mathbb{R}^m$, $\vec{X} \in \mathbb{R}^{m \times n}$ is the design matrix, $\vec{\beta} \in \mathbb{R}^n$ contains regression coefficients, and $\vec{\epsilon} \sim \mathcal{N}(\vec{0}, \sigma^2\vec{I})$.
+
+\subsection{From Least Squares to LASSO}
+
+\subsubsection{Ordinary Least Squares}
+
+The classical least squares estimator:
+\begin{equation}
+    \hat{\vec{\beta}}_{LS} = \argmin_{\vec{\beta}} \|\vec{y} - \vec{X}\vec{\beta}\|_2^2 = (\vec{X}^T\vec{X})^{-1}\vec{X}^T\vec{y}
+    \label{eq:ols}
+\end{equation}
+
+% NOTE: OLS requires m > n and full rank design matrix
+This estimator is unbiased ($\mathbb{E}[\hat{\vec{\beta}}_{LS}] = \vec{\beta}$) but may have high variance, especially when predictors are correlated or $n$ is large relative to $m$.
+
+\subsubsection{The LASSO Estimator}
+
+The Least Absolute Shrinkage and Selection Operator (LASSO) adds $\ell_1$ regularization:
+\begin{equation}
+    \hat{\vec{\beta}}_{LASSO} = \argmin_{\vec{\beta}} \left\{\frac{1}{2}\|\vec{y} - \vec{X}\vec{\beta}\|_2^2 + \lambda\|\vec{\beta}\|_1\right\}
+    \label{eq:lasso}
+\end{equation}
+
+\begin{theorem}[Variable Selection Property]
+    \label{thm:var_selection}
+    For sufficiently large $\lambda$, the LASSO estimator $\hat{\vec{\beta}}_{LASSO}$ contains exact zeros, performing automatic variable selection.
+\end{theorem}
+
+\subsection{Bias-Variance Trade-off}
+
+The LASSO introduces bias to reduce variance:
+\begin{align}
+    \text{MSE}(\hat{\vec{\beta}}) & = \mathbb{E}\left[\|\hat{\vec{\beta}} - \vec{\beta}\|_2^2\right]                        \\
+                                  & = \|\mathbb{E}[\hat{\vec{\beta}}] - \vec{\beta}\|_2^2 + \trace(\Var(\hat{\vec{\beta}})) \\
+                                  & = \text{Bias}^2 + \text{Variance}
+\end{align}
+
+While OLS minimizes bias, LASSO accepts some bias in exchange for substantially reduced variance through sparsity.
+
+\subsection{High-Dimensional Regime}
+
+\begin{proposition}[LASSO in High Dimensions]
+    \label{prop:high_dim}
+    When $n > m$ (more predictors than observations), OLS is not unique. However, LASSO provides a unique sparse solution for appropriate $\lambda > 0$.
+\end{proposition}
+
+This property makes LASSO particularly valuable in modern applications like genomics, where the number of features vastly exceeds the sample size.
+
+\newpage
+
+%=====================================
+\section{Elastic Net: Combining $\ell_1$ and $\ell_2$ Penalties}
+%=====================================
+
+\subsection{Motivation and Formulation}
+
+The LASSO has two notable limitations:
+\begin{enumerate}
+    \item In the $n > m$ setting, it selects at most $m$ variables
+    \item When predictors are highly correlated, LASSO tends to arbitrarily select one from each group
+\end{enumerate}
+
+The Elastic Net addresses these issues by combining $\ell_1$ and $\ell_2$ penalties:
+\begin{equation}
+    \hat{\vec{\beta}}_{EN} = \argmin_{\vec{\beta}} \left\{\frac{1}{2}\|\vec{y} - \vec{X}\vec{\beta}\|_2^2 + \lambda_1\|\vec{\beta}\|_1 + \lambda_2\|\vec{\beta}\|_2^2\right\}
+    \label{eq:elastic_net}
+\end{equation}
+
+\subsection{Geometric Interpretation}
+
+The constraint region for Elastic Net is:
+\begin{equation}
+    \mathcal{C}_{EN} = \left\{\vec{\beta} : \alpha\|\vec{\beta}\|_1 + (1-\alpha)\|\vec{\beta}\|_2^2 \leq t\right\}
+\end{equation}
+
+This creates a compromise between the diamond-shaped $\ell_1$ ball and the spherical $\ell_2$ ball, maintaining sparsity-inducing corners while allowing smoother boundaries.
+
+\subsection{Proximal Gradient Solution}
+
+The Elastic Net optimization can be solved efficiently using proximal gradient methods. The key insight is that the $\ell_2$ penalty can be absorbed into the smooth part:
+\begin{equation}
+    f(\vec{\beta}) = \frac{1}{2}\|\vec{y} - \vec{X}\vec{\beta}\|_2^2 + \lambda_2\|\vec{\beta}\|_2^2
+\end{equation}
+
+with gradient:
+\begin{equation}
+    \nabla f(\vec{\beta}) = \vec{X}^T(\vec{X}\vec{\beta} - \vec{y}) + 2\lambda_2\vec{\beta} = (\vec{X}^T\vec{X} + 2\lambda_2\vec{I})\vec{\beta} - \vec{X}^T\vec{y}
+\end{equation}
+
+The proximal gradient update becomes:
+\begin{equation}
+    \vec{\beta}^{(k+1)} = \shrink_{\gamma\lambda_1}\left(\vec{\beta}^{(k)} - \gamma\nabla f(\vec{\beta}^{(k)})\right)
+\end{equation}
+
+where $\shrink_{\tau}$ is the element-wise soft-thresholding operator.
+
+\newpage
+
+%=====================================
+\section{Computational Considerations and Algorithms}
+%=====================================
+
+\subsection{Algorithm Summary}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Problem}  & \textbf{Regularizer}                                & \textbf{Proximal Operator}                              \\
+        \midrule
+        Standard Sparsity & $\|\vec{x}\|_1$                                     & $\shrink_{\tau}(x_i) = \sign(x_i)\max(0, |x_i| - \tau)$ \\
+        Joint Sparsity    & $\|\vec{X}\|_{2,1}$                                 & Row-wise multivariate soft-thresholding                 \\
+        Group Sparsity    & $\sum_g w_g\|\vec{x}_{[g]}\|_2$                     & Group-wise multivariate soft-thresholding               \\
+        Elastic Net       & $\lambda_1\|\vec{x}\|_1 + \lambda_2\|\vec{x}\|_2^2$ & Modified soft-thresholding with $\ell_2$ in gradient    \\
+        \bottomrule
+    \end{tabular}
+    \caption{Summary of sparsity-inducing regularizers and their proximal operators}
+    \label{tab:prox_summary}
+\end{table}
+
+\subsection{Convergence Analysis}
+
+For the proximal gradient method applied to problems of the form:
+\begin{equation}
+    \min_{\vec{x}} f(\vec{x}) + g(\vec{x})
+\end{equation}
+where $f$ is $L$-smooth and $g$ is convex, the convergence rate is:
+\begin{equation}
+    F(\vec{x}^{(k)}) - F(\vec{x}^*) \leq \frac{2L\|\vec{x}^{(0)} - \vec{x}^*\|_2^2}{k}
+\end{equation}
+when using step size $\gamma = 1/L$.
+
+\subsection{Practical Implementation Tips}
+
+\begin{enumerate}
+    \item \textbf{Step Size Selection}: Use backtracking line search or set $\gamma = 1/\|\vec{D}^T\vec{D}\|_2$ for guaranteed convergence
+
+    \item \textbf{Warm Starts}: When solving for multiple $\lambda$ values, use the solution from $\lambda_{i-1}$ to initialize $\lambda_i$
+
+    \item \textbf{Active Set Strategies}: Maintain and update only non-zero coefficients to reduce computational cost
+
+    \item \textbf{Stopping Criteria}: Monitor relative change in objective value or coefficient updates:
+          \begin{equation}
+              \frac{\|\vec{x}^{(k+1)} - \vec{x}^{(k)}\|_2}{\|\vec{x}^{(k)}\|_2 + \epsilon} < \text{tol}
+          \end{equation}
+\end{enumerate}
+
+\newpage
+
+%=====================================
+\section{Conclusions and Future Directions}
+%=====================================
+
+\subsection{Key Takeaways}
+
+\begin{enumerate}
+    \item \textbf{Structured sparsity} extends classical sparse coding by incorporating prior knowledge about coefficient patterns through mixed norms
+
+    \item \textbf{Proximal methods} provide a unified framework for solving various structured sparsity problems, with the key computational challenge being the evaluation of proximal operators
+
+    \item \textbf{Statistical connections} reveal that signal processing techniques (basis pursuit denoising) and statistical methods (LASSO) are fundamentally addressing the same optimization problem in different contexts
+
+    \item \textbf{Group structures} enable more interpretable models by enforcing sparsity at the group level rather than individual coefficients
+\end{enumerate}
+
+\subsection{Open Research Questions}
+
+\begin{enumerate}
+    \item \textbf{Overlapping Groups}: Developing efficient algorithms for group sparsity with overlapping groups remains challenging
+
+    \item \textbf{Adaptive Regularization}: Learning the group structure or regularization parameters from data
+
+    \item \textbf{Non-convex Extensions}: Exploring non-convex penalties that better approximate the $\ell_0$ norm while maintaining computational tractability
+
+    \item \textbf{Dictionary Learning}: Jointly learning dictionaries and sparse codes with structured sparsity constraints
+\end{enumerate}
+
+\subsection{Applications Beyond Linear Models}
+
+The principles of structured sparsity extend to:
+\begin{itemize}
+    \item Deep neural networks (structured pruning)
+    \item Graphical models (structure learning)
+    \item Matrix completion (low-rank plus sparse decomposition)
+    \item Time series analysis (detecting change points)
+\end{itemize}
+
+\begin{remark}[Final Thought]
+    The marriage of signal processing insights with statistical methodology, exemplified by the connection between basis pursuit and LASSO, continues to drive innovation in high-dimensional data analysis. As data complexity grows, structured sparsity provides a principled framework for incorporating domain knowledge into learning algorithms.
+\end{remark}
+
+\end{document}

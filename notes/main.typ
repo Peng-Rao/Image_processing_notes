@@ -29,4 +29,5 @@
 #include "chapters/chapter4.typ"
 #include "chapters/chapter5.typ"
 #include "chapters/chapter6.typ"
+#include "chapters/chapter7.typ"
 #include "chapters/appendix.typ"

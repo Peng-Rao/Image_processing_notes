@@ -44,6 +44,8 @@ $ bold(0) = sum_(i=1)^n (x_i - y_i) bold(e)_i $
 
 By linear independence, $(x_i - y_i) = 0$ for all $i$, implying $x_i = y_i$ for all $i$. Therefore, the representation is unique.
 
+#pagebreak()
+
 == Orthogonal Vectors
 #definition("Orthonormal Basis")[
   A set of vectors ${bold(e)_1, bold(e)_2, ..., bold(e)_n} subset RR^n$ forms an _orthonormal basis_ if:
