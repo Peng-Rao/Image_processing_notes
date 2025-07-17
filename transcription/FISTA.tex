@@ -1,0 +1,462 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{algorithm, algorithmic}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\prox}{prox}
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\diag}{diag}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\R}{\mathbb{R}}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Fast Iterative Shrinkage-Thresholding Algorithm (FISTA):\\
+A Comprehensive Study of Accelerated Proximal Gradient Methods}
+\author{Lecture Notes}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ==========================================
+\section{Introduction and Motivation}
+% ==========================================
+
+\subsection{Overview of Sparse Optimization}
+
+The Fast Iterative Shrinkage-Thresholding Algorithm (FISTA) represents a significant advancement in solving composite optimization problems, particularly those involving sparsity-inducing regularizers. This document provides a comprehensive treatment of the theoretical foundations, algorithmic development, and practical implementation of FISTA.
+
+The fundamental optimization problem we consider takes the form:
+\begin{equation}\label{eq:main-problem}
+    \min_{\vec{x} \in \R^n} F(\vec{x}) = f(\vec{x}) + g(\vec{x})
+\end{equation}
+where:
+\begin{itemize}
+    \item $f: \R^n \to \R$ is a smooth, convex function with Lipschitz continuous gradient
+    \item $g: \R^n \to \R$ is a convex, possibly non-smooth regularization term
+    \item The composite function $F$ captures both data fidelity and structural constraints
+\end{itemize}
+
+\subsection{The $\ell_1$-Regularized Least Squares Problem}
+
+A canonical instance of \eqref{eq:main-problem} arises in sparse signal recovery and compressed sensing:
+\begin{equation}\label{eq:l1-problem}
+    \min_{\vec{x} \in \R^n} \left\{ \frac{1}{2}\norm{\vec{A}\vec{x} - \vec{b}}_2^2 + \lambda\norm{\vec{x}}_1 \right\}
+\end{equation}
+
+% NOTE: Expanding on the components
+Here, the objective function comprises:
+\begin{enumerate}
+    \item \textbf{Data fidelity term}: $f(\vec{x}) = \frac{1}{2}\norm{\vec{A}\vec{x} - \vec{b}}_2^2$
+          \begin{itemize}
+              \item $\vec{A} \in \R^{m \times n}$ represents the measurement or design matrix
+              \item $\vec{b} \in \R^m$ denotes the observed data vector
+              \item This quadratic term quantifies the discrepancy between model predictions and observations
+          \end{itemize}
+
+    \item \textbf{Regularization term}: $g(\vec{x}) = \lambda\norm{\vec{x}}_1 = \lambda\sum_{i=1}^n \abs{x_i}$
+          \begin{itemize}
+              \item $\lambda > 0$ is the regularization parameter controlling sparsity
+              \item The $\ell_1$ norm promotes sparse solutions by encouraging many components to be exactly zero
+          \end{itemize}
+\end{enumerate}
+
+\subsection{Comparison of Regularization Norms}
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        Norm     & Definition                                    & Properties                & Optimization & Applications      \\
+        \midrule
+        $\ell_0$ & $\norm{\vec{x}}_0 = \abs{\{i : x_i \neq 0\}}$ & Non-convex, discontinuous & NP-hard      & Exact sparsity    \\
+        $\ell_1$ & $\norm{\vec{x}}_1 = \sum_i \abs{x_i}$         & Convex, non-smooth        & Tractable    & Convex relaxation \\
+        $\ell_2$ & $\norm{\vec{x}}_2 = \sqrt{\sum_i x_i^2}$      & Convex, smooth            & Closed-form  & Ridge regression  \\
+        \bottomrule
+    \end{tabular}
+    \caption{Comparison of commonly used regularization norms in optimization}
+\end{table}
+
+\newpage
+% ==========================================
+\section{Proximal Gradient Methods}
+% ==========================================
+
+\subsection{Limitations of Classical Gradient Descent}
+
+The non-smoothness of the $\ell_1$ norm presents a fundamental challenge for classical optimization methods. Consider the subdifferential of the $\ell_1$ norm at a point $\vec{x}$:
+
+\begin{equation}
+    \partial\norm{\vec{x}}_1 = \left\{ \vec{v} \in \R^n : v_i \in
+    \begin{cases}
+        \{1\}   & \text{if } x_i > 0 \\
+        \{-1\}  & \text{if } x_i < 0 \\
+        [-1, 1] & \text{if } x_i = 0
+    \end{cases}
+    \right\}
+\end{equation}
+
+% NOTE: Mathematical insight
+The multi-valued nature of the subdifferential at $x_i = 0$ precludes the direct application of gradient descent, necessitating more sophisticated approaches.
+
+\subsection{The Proximal Mapping}
+
+\begin{definition}[Proximal Operator]\label{def:prox}
+    For a convex function $h: \R^n \to \R \cup \{+\infty\}$, the proximal operator is defined as:
+    \begin{equation}\label{eq:prox-def}
+        \prox_h(\vec{v}) = \argmin_{\vec{u} \in \R^n} \left\{ h(\vec{u}) + \frac{1}{2}\norm{\vec{u} - \vec{v}}_2^2 \right\}
+    \end{equation}
+\end{definition}
+
+The proximal operator can be interpreted as:
+\begin{itemize}
+    \item A generalization of orthogonal projection onto convex sets
+    \item A trade-off between minimizing $h$ and staying close to $\vec{v}$
+    \item An implicit gradient step that handles non-smoothness
+\end{itemize}
+
+\subsection{Proximal Operator for $\ell_1$ Regularization}
+
+\begin{theorem}[Soft Thresholding]\label{thm:soft-threshold}
+    The proximal operator of $h(\vec{x}) = \lambda\norm{\vec{x}}_1$ is given component-wise by:
+    \begin{equation}\label{eq:soft-threshold}
+        [\prox_{\lambda\norm{\cdot}_1}(\vec{v})]_i = S_\lambda(v_i) = \sign(v_i) \max\{\abs{v_i} - \lambda, 0\}
+    \end{equation}
+    where $S_\lambda$ is the soft-thresholding operator.
+\end{theorem}
+
+\begin{proof}
+    For the scalar case, we need to solve:
+    \begin{align}
+        \min_{u \in \R} \left\{ \lambda\abs{u} + \frac{1}{2}(u - v)^2 \right\}
+    \end{align}
+
+    % NOTE: Detailed derivation steps
+    Taking the subdifferential and setting it to contain zero:
+    \begin{align}
+        0 & \in \lambda \cdot \partial\abs{u} + (u - v) \\
+        v & \in u + \lambda \cdot \partial\abs{u}
+    \end{align}
+
+    Case analysis yields:
+    \begin{itemize}
+        \item If $v > \lambda$: $u = v - \lambda$
+        \item If $v < -\lambda$: $u = v + \lambda$
+        \item If $\abs{v} \leq \lambda$: $u = 0$
+    \end{itemize}
+
+    Combining these cases gives the soft-thresholding formula.
+\end{proof}
+
+\subsection{Visualization of Thresholding Operators}
+
+The soft-thresholding operator exhibits the following characteristics:
+\begin{itemize}
+    \item \textbf{Shrinkage effect}: Non-zero coefficients are reduced by $\lambda$
+    \item \textbf{Sparsification}: Coefficients with $\abs{v_i} \leq \lambda$ are set to zero
+    \item \textbf{Sign preservation}: The sign of large coefficients is maintained
+\end{itemize}
+
+\boxed{\text{Key Insight: Soft thresholding simultaneously promotes sparsity and shrinks large coefficients}}
+
+\newpage
+% ==========================================
+\section{The Proximal Gradient Algorithm}
+% ==========================================
+
+\subsection{Algorithm Development}
+
+The proximal gradient method, also known as the Iterative Shrinkage-Thresholding Algorithm (ISTA), combines gradient descent for the smooth part with proximal operations for the non-smooth part.
+
+\begin{theorem}[Proximal Gradient Iteration]
+    For problem \eqref{eq:main-problem} with $f$ having $L$-Lipschitz gradient, the iteration:
+    \begin{equation}\label{eq:prox-grad}
+        \vec{x}^{k+1} = \prox_{\alpha g}\left(\vec{x}^k - \alpha \nabla f(\vec{x}^k)\right)
+    \end{equation}
+    converges to the optimal solution when $0 < \alpha < 2/L$.
+\end{theorem}
+
+\subsection{ISTA for $\ell_1$-Regularized Least Squares}
+
+For the specific problem \eqref{eq:l1-problem}, the algorithm takes the form:
+
+\begin{algorithm}
+    \caption{Iterative Shrinkage-Thresholding Algorithm (ISTA)}
+    \begin{enumerate}
+        \item \textbf{Initialize}: Choose $\vec{x}^0 \in \R^n$, step size $\alpha > 0$
+        \item \textbf{For} $k = 0, 1, 2, \ldots$ \textbf{do}:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Compute gradient: $\vec{g}^k = \vec{A}^T(\vec{A}\vec{x}^k - \vec{b})$
+                  \item Gradient step: $\vec{z}^k = \vec{x}^k - \alpha \vec{g}^k$
+                  \item Soft threshold: $\vec{x}^{k+1} = S_{\alpha\lambda}(\vec{z}^k)$
+              \end{enumerate}
+        \item \textbf{Until} convergence criterion is met
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Step Size Selection}
+
+\subsubsection{Lipschitz Constant Computation}
+
+\begin{definition}[Lipschitz Continuity of Gradient]
+    A function $f$ has $L$-Lipschitz continuous gradient if:
+    \begin{equation}
+        \norm{\nabla f(\vec{x}) - \nabla f(\vec{y})}_2 \leq L\norm{\vec{x} - \vec{y}}_2, \quad \forall \vec{x}, \vec{y} \in \R^n
+    \end{equation}
+\end{definition}
+
+For the quadratic function $f(\vec{x}) = \frac{1}{2}\norm{\vec{A}\vec{x} - \vec{b}}_2^2$:
+
+\begin{lemma}\label{lem:lipschitz}
+    The Lipschitz constant of $\nabla f$ is $L = \norm{\vec{A}^T\vec{A}}_2 = \lambda_{\max}(\vec{A}^T\vec{A})$, where $\lambda_{\max}$ denotes the largest eigenvalue.
+\end{lemma}
+
+\begin{proof}
+    The gradient is $\nabla f(\vec{x}) = \vec{A}^T(\vec{A}\vec{x} - \vec{b})$. Thus:
+    \begin{align}
+        \norm{\nabla f(\vec{x}) - \nabla f(\vec{y})}_2 & = \norm{\vec{A}^T\vec{A}(\vec{x} - \vec{y})}_2                \\
+                                                       & \leq \norm{\vec{A}^T\vec{A}}_2 \norm{\vec{x} - \vec{y}}_2     \\
+                                                       & = \lambda_{\max}(\vec{A}^T\vec{A}) \norm{\vec{x} - \vec{y}}_2
+    \end{align}
+    where we used the fact that the spectral norm equals the largest eigenvalue for symmetric positive semidefinite matrices.
+\end{proof}
+
+\subsubsection{Backtracking Line Search}
+
+When computing eigenvalues is impractical, adaptive step size selection via backtracking provides a robust alternative:
+
+\begin{algorithm}
+    \caption{Backtracking Line Search for Proximal Gradient}
+    \begin{enumerate}
+        \item \textbf{Parameters}: $\beta \in (0, 1)$ (typically $\beta = 0.5$), $\eta \in (0, 1)$ (typically $\eta = 0.9$)
+        \item \textbf{Initialize}: $\alpha = \alpha_0$ (initial guess, e.g., $\alpha_0 = 1$)
+        \item \textbf{Repeat}:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Compute: $\vec{x}^+ = \prox_{\alpha g}(\vec{x}^k - \alpha \nabla f(\vec{x}^k))$
+                  \item \textbf{While} $F(\vec{x}^+) > F(\vec{x}^k)$:
+                        \begin{itemize}
+                            \item Set $\alpha \leftarrow \beta \alpha$
+                            \item Recompute $\vec{x}^+$
+                        \end{itemize}
+              \end{enumerate}
+        \item \textbf{Set}: $\vec{x}^{k+1} = \vec{x}^+$
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Convergence Analysis}
+
+\begin{theorem}[ISTA Convergence Rate]
+    For the proximal gradient method with constant step size $\alpha = 1/L$, we have:
+    \begin{equation}
+        F(\vec{x}^k) - F(\vec{x}^*) \leq \frac{L\norm{\vec{x}^0 - \vec{x}^*}_2^2}{2k}
+    \end{equation}
+    where $\vec{x}^*$ is an optimal solution.
+\end{theorem}
+
+% NOTE: This shows O(1/k) sublinear convergence
+\marginpar{Important: ISTA achieves $O(1/k)$ convergence}
+
+\newpage
+% ==========================================
+\section{Fast Iterative Shrinkage-Thresholding Algorithm (FISTA)}
+% ==========================================
+
+\subsection{Motivation for Acceleration}
+
+While ISTA achieves $O(1/k)$ convergence, Nesterov's acceleration technique can improve this to $O(1/k^2)$ without additional computational cost per iteration. This acceleration is achieved through a momentum-like mechanism that exploits the history of iterates.
+
+\subsection{The FISTA Algorithm}
+
+\begin{algorithm}
+    \caption{Fast Iterative Shrinkage-Thresholding Algorithm (FISTA)}
+    \begin{enumerate}
+        \item \textbf{Initialize}:
+              \begin{itemize}
+                  \item Choose $\vec{x}^0 = \vec{y}^1 \in \R^n$
+                  \item Set $t_1 = 1$
+                  \item Choose step size $\alpha \leq 1/L$
+              \end{itemize}
+        \item \textbf{For} $k = 1, 2, 3, \ldots$ \textbf{do}:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Proximal gradient step:
+                        \begin{equation}
+                            \vec{x}^k = \prox_{\alpha g}(\vec{y}^k - \alpha \nabla f(\vec{y}^k))
+                        \end{equation}
+
+                  \item Update momentum parameter:
+                        \begin{equation}
+                            t_{k+1} = \frac{1 + \sqrt{1 + 4t_k^2}}{2}
+                        \end{equation}
+
+                  \item Compute extrapolated point:
+                        \begin{equation}
+                            \vec{y}^{k+1} = \vec{x}^k + \frac{t_k - 1}{t_{k+1}}(\vec{x}^k - \vec{x}^{k-1})
+                        \end{equation}
+              \end{enumerate}
+        \item \textbf{Until} convergence
+    \end{enumerate}
+\end{algorithm}
+
+\subsection{Key Innovations in FISTA}
+
+\subsubsection{The Momentum Sequence}
+
+The sequence $\{t_k\}$ satisfies the recurrence relation:
+\begin{equation}
+    t_{k+1}^2 - t_{k+1} - t_k^2 = 0
+\end{equation}
+
+% NOTE: Mathematical insight into the sequence
+This yields the closed-form expression:
+\begin{equation}
+    t_k = \frac{k + 1}{2} + O(1) \approx \frac{k}{2} \text{ for large } k
+\end{equation}
+
+\subsubsection{The Extrapolation Step}
+
+The extrapolation coefficient:
+\begin{equation}
+    \beta_k = \frac{t_k - 1}{t_{k+1}} \approx \frac{k-2}{k+1} \to 1 \text{ as } k \to \infty
+\end{equation}
+
+This creates an "overshoot" effect that accelerates convergence by anticipating the trajectory of the iterates.
+
+\subsection{Convergence Theory}
+
+\begin{theorem}[FISTA Convergence Rate]\label{thm:fista-convergence}
+    For FISTA with step size $\alpha = 1/L$, the following bound holds:
+    \begin{equation}
+        F(\vec{x}^k) - F(\vec{x}^*) \leq \frac{2L\norm{\vec{x}^0 - \vec{x}^*}_2^2}{(k+1)^2}
+    \end{equation}
+\end{theorem}
+
+\begin{remark}
+    The $O(1/k^2)$ rate is optimal for first-order methods on the class of convex functions with Lipschitz continuous gradients.
+\end{remark}
+
+\subsection{Geometric Interpretation}
+
+FISTA can be viewed as performing gradient descent on an auxiliary sequence $\{\vec{y}^k\}$ that is constructed to have favorable properties:
+\begin{itemize}
+    \item The sequence $\{\vec{y}^k\}$ exhibits less oscillation than $\{\vec{x}^k\}$
+    \item The extrapolation step creates a "look-ahead" effect
+    \item The momentum builds up over iterations, accelerating convergence in consistent directions
+\end{itemize}
+
+\newpage
+% ==========================================
+\section{Implementation Considerations and Extensions}
+% ==========================================
+
+\subsection{Practical Implementation Details}
+
+\subsubsection{Stopping Criteria}
+
+Common convergence criteria for FISTA include:
+\begin{enumerate}
+    \item \textbf{Relative change in objective}:
+          \begin{equation}
+              \frac{\abs{F(\vec{x}^k) - F(\vec{x}^{k-1})}}{\abs{F(\vec{x}^{k-1})}} < \epsilon_{\text{obj}}
+          \end{equation}
+
+    \item \textbf{Relative change in iterates}:
+          \begin{equation}
+              \frac{\norm{\vec{x}^k - \vec{x}^{k-1}}_2}{\norm{\vec{x}^{k-1}}_2} < \epsilon_{\text{sol}}
+          \end{equation}
+
+    \item \textbf{Optimality conditions}:
+          \begin{equation}
+              \text{dist}(0, \partial F(\vec{x}^k)) < \epsilon_{\text{opt}}
+          \end{equation}
+\end{enumerate}
+
+\subsubsection{Computational Complexity}
+
+Per iteration, FISTA requires:
+\begin{itemize}
+    \item One gradient evaluation: $O(mn)$ for matrix-vector products
+    \item One soft-thresholding operation: $O(n)$
+    \item Vector operations: $O(n)$
+\end{itemize}
+
+Total complexity: $O(mn)$ per iteration, same as ISTA but with faster convergence.
+
+\subsection{Extensions and Variants}
+
+\subsubsection{Adaptive Restart}
+
+Adaptive restart strategies can further improve practical performance:
+\begin{equation}
+    \text{Restart if: } \langle \vec{y}^k - \vec{x}^k, \vec{x}^k - \vec{x}^{k-1} \rangle > 0
+\end{equation}
+
+This condition detects when the momentum is counterproductive.
+
+\subsubsection{Strong Convexity}
+
+When $f$ is $\mu$-strongly convex, linear convergence can be achieved:
+\begin{equation}
+    F(\vec{x}^k) - F(\vec{x}^*) \leq \left(1 - \sqrt{\frac{\mu}{L}}\right)^k [F(\vec{x}^0) - F(\vec{x}^*)]
+\end{equation}
+
+\subsection{Applications Beyond $\ell_1$ Regularization}
+
+FISTA's framework extends to various proximal operators:
+\begin{table}[h]
+    \centering
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        Regularizer         & Proximal Operator           & Application              \\
+        \midrule
+        $\norm{\vec{x}}_1$  & Soft thresholding           & Sparse recovery          \\
+        $\norm{\vec{x}}_2$  & Scaling                     & Group sparsity           \\
+        $\delta_C(\vec{x})$ & Projection onto $C$         & Constrained optimization \\
+        $\norm{\vec{X}}_*$  & Singular value thresholding & Low-rank matrix recovery \\
+        \bottomrule
+    \end{tabular}
+    \caption{Common regularizers and their proximal operators}
+\end{table}
+
+\subsection{Numerical Experiments and Convergence Behavior}
+
+In practice, FISTA exhibits several characteristic behaviors:
+\begin{enumerate}
+    \item \textbf{Initial phase}: Rapid decrease in objective value
+    \item \textbf{Middle phase}: Steady convergence with momentum benefits
+    \item \textbf{Final phase}: Oscillations may occur near the solution
+\end{enumerate}
+
+\paragraph{Comparison with ISTA}
+Empirical studies consistently show FISTA requiring 5-10× fewer iterations than ISTA for the same accuracy, validating the theoretical acceleration.
+
+% ==========================================
+\section*{Conclusion}
+% ==========================================
+
+The Fast Iterative Shrinkage-Thresholding Algorithm represents a fundamental advancement in composite convex optimization, combining:
+\begin{itemize}
+    \item Elegant handling of non-smooth regularizers via proximal operators
+    \item Optimal convergence rates through Nesterov's acceleration
+    \item Practical efficiency and broad applicability
+\end{itemize}
+
+FISTA's success has inspired numerous extensions and remains a cornerstone algorithm in machine learning, signal processing, and computational statistics.
+
+\end{document}

@@ -3,7 +3,7 @@
 #import "@preview/cetz-plot:0.1.1": chart, plot
 #import "../template.typ": *
 
-= Sparse Coding
+= Sparse Coding In $ell_0$ sense
 == The Sparse Coding Problem
 Given the desire for sparse representations, a natural formulation is to seek the sparsest possible $bold(alpha)$ such that:
 $

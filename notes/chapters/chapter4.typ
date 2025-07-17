@@ -93,7 +93,7 @@ $
 
   $
     f(bold(x)) &= 1/2 (bold(D)bold(x) - bold(s))^T (bold(D)bold(x) - bold(s)) + lambda/2 bold(x)^T bold(x) \
-    &= 1/2 vec(x)^T bold(D)^T bold(D) vec(x) - vec(s)^T bold(D) vec(x) + 1/2 vec(s)^T vec(s) + lambda/2 vec(x)^T vec(x)
+    &= 1/2 bold(x)^T bold(D)^T bold(D) bold(x) - bold(D) bold(x)^T bold(s) + 1/2 bold(s)^T bold(s) + lambda/2 bold(x)^T bold(x)
   $
 
   Taking the gradient with respect to $bold(x)$:

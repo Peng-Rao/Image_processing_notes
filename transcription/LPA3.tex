@@ -1,0 +1,339 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amsthm, amssymb, mathtools, mathrsfs}
+\usepackage{enumitem, graphicx, hyperref, booktabs, array}
+\usepackage[mathscr]{euscript}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{algorithmicx, algorithm}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=red}
+
+% Custom commands
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\Bias}{Bias}
+\DeclareMathOperator{\MSE}{MSE}
+\DeclareMathOperator{\argmin}{arg\,min}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+
+% Theorem environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Local Polynomial Approximation with Adaptive Support: \\ The Intersection of Confidence Intervals Rule}
+\author{Lecture Notes on Advanced Signal Processing}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\newpage
+
+\section{Introduction to Adaptive Local Polynomial Approximation}
+
+\subsection{Motivation and Overview}
+
+The Local Polynomial Approximation (LPA) represents a fundamental technique in non-parametric regression and signal processing. While traditional LPA methods employ fixed-size support regions, this lecture extends the framework to incorporate \textit{adaptive support selection} through the Intersection of Confidence Intervals (ICI) rule, addressing the fundamental bias-variance trade-off inherent in statistical estimation.
+
+\begin{definition}[Signal Model]
+    Consider a discrete signal model:
+    \begin{equation}
+        y_i = f(x_i) + \eta_i, \quad i = 1, 2, \ldots, n
+        \label{eq:signal_model}
+    \end{equation}
+    where:
+    \begin{itemize}
+        \item $f: \R \to \R$ represents the unknown ground truth signal
+        \item $\eta_i \sim \mathcal{N}(0, \sigma^2)$ denotes independent and identically distributed (i.i.d.) Gaussian noise
+        \item $y_i$ constitutes the observed noisy measurements
+    \end{itemize}
+\end{definition}
+
+The central challenge in signal estimation involves recovering $f(x)$ from the noisy observations $\{y_i\}_{i=1}^n$ while optimally balancing estimation accuracy and stability.
+
+\subsection{Fixed-Support LPA: Review and Limitations}
+
+In the standard LPA framework, estimation of $f(x_0)$ proceeds by fitting a polynomial of degree $p$ within a fixed interval $[x_0 - h, x_0 + h]$:
+
+\begin{equation}
+    \hat{f}(x) = \sum_{j=0}^{p} \beta_j (x - x_0)^j
+    \label{eq:lpa_polynomial}
+\end{equation}
+
+The coefficients $\{\beta_j\}_{j=0}^p$ are obtained through weighted least squares:
+\begin{equation}
+    \{\hat{\beta}_j\} = \argmin_{\{\beta_j\}} \sum_{i: |x_i - x_0| \leq h} w_i \left( y_i - \sum_{j=0}^{p} \beta_j (x_i - x_0)^j \right)^2
+    \label{eq:wls}
+\end{equation}
+
+% NOTE: Added weight function explanation
+where $w_i$ represents the weight assigned to observation $i$, typically chosen as a kernel function $K((x_i - x_0)/h)$ that emphasizes observations near $x_0$.
+
+\begin{remark}
+    The estimate $\hat{f}(x_0) = \hat{\beta}_0$ can be expressed as a linear combination of observations:
+    \begin{equation}
+        \hat{f}(x_0) = \sum_{i=1}^{n} h_i(x_0) y_i = \vec{h}(x_0)^T \vec{y}
+        \label{eq:linear_estimator}
+    \end{equation}
+    where $\vec{h}(x_0)$ represents the equivalent kernel arising from the polynomial fitting procedure.
+\end{remark}
+
+\newpage
+
+\section{Statistical Properties and the Bias-Variance Decomposition}
+
+\subsection{Mean Squared Error Analysis}
+
+The performance of any estimator $\hat{f}(x_0)$ is commonly quantified through the Mean Squared Error (MSE):
+
+\begin{theorem}[Bias-Variance Decomposition]
+    \label{thm:bias_variance}
+    For any estimator $\hat{f}(x_0)$ of $f(x_0)$, the MSE admits the decomposition:
+    \begin{equation}
+        \MSE[\hat{f}(x_0)] = \E[(\hat{f}(x_0) - f(x_0))^2] = \Bias^2[\hat{f}(x_0)] + \Var[\hat{f}(x_0)]
+        \label{eq:mse_decomposition}
+    \end{equation}
+    where:
+    \begin{align}
+        \Bias[\hat{f}(x_0)] & = \E[\hat{f}(x_0)] - f(x_0)               \\
+        \Var[\hat{f}(x_0)]  & = \E[(\hat{f}(x_0) - \E[\hat{f}(x_0)])^2]
+    \end{align}
+\end{theorem}
+
+\begin{proof}
+    % NOTE: Expanded proof with intermediate steps
+    Starting from the MSE definition:
+    \begin{align}
+        \MSE[\hat{f}(x_0)] & = \E[(\hat{f}(x_0) - f(x_0))^2]                                                                                \\
+                           & = \E[(\hat{f}(x_0) - \E[\hat{f}(x_0)] + \E[\hat{f}(x_0)] - f(x_0))^2]
+        \intertext{Adding and subtracting $\E[\hat{f}(x_0)]$:}
+                           & = \E[(\hat{f}(x_0) - \E[\hat{f}(x_0)])^2] + 2\E[(\hat{f}(x_0) - \E[\hat{f}(x_0)])(\E[\hat{f}(x_0)] - f(x_0))]  \\
+                           & \quad + (\E[\hat{f}(x_0)] - f(x_0))^2
+        \intertext{Since $\E[\hat{f}(x_0)] - f(x_0)$ is deterministic:}
+                           & = \Var[\hat{f}(x_0)] + 2(\E[\hat{f}(x_0)] - f(x_0))\E[\hat{f}(x_0) - \E[\hat{f}(x_0)]] + \Bias^2[\hat{f}(x_0)]
+        \intertext{The middle term vanishes as $\E[\hat{f}(x_0) - \E[\hat{f}(x_0)]] = 0$:}
+                           & = \Var[\hat{f}(x_0)] + \Bias^2[\hat{f}(x_0)]
+    \end{align}
+\end{proof}
+
+\subsection{Variance Calculation for Linear Estimators}
+
+For the LPA estimator expressed as in Equation \eqref{eq:linear_estimator}, we derive the variance explicitly:
+
+\begin{lemma}[Variance of LPA Estimator]
+    \label{lem:variance_lpa}
+    Under the signal model \eqref{eq:signal_model} with i.i.d. Gaussian noise $\eta_i \sim \mathcal{N}(0, \sigma^2)$:
+    \begin{equation}
+        \Var[\hat{f}(x_0)] = \sigma^2 \|\vec{h}(x_0)\|^2 = \sigma^2 \sum_{i=1}^{n} h_i^2(x_0)
+        \label{eq:variance_formula}
+    \end{equation}
+\end{lemma}
+
+\begin{proof}
+    Starting from the linear representation:
+    \begin{align}
+        \Var[\hat{f}(x_0)] & = \Var\left[\sum_{i=1}^{n} h_i(x_0) y_i\right]               \\
+                           & = \Var\left[\sum_{i=1}^{n} h_i(x_0) (f(x_i) + \eta_i)\right]
+        \intertext{Since $f(x_i)$ is deterministic and $\eta_i$ are independent:}
+                           & = \sum_{i=1}^{n} h_i^2(x_0) \Var[\eta_i]                     \\
+                           & = \sigma^2 \sum_{i=1}^{n} h_i^2(x_0)
+    \end{align}
+\end{proof}
+
+\newpage
+
+\section{The Adaptive Support Problem}
+
+\subsection{Support Size Impact on Estimation Quality}
+
+The choice of support size $h$ critically affects both bias and variance components:
+
+\begin{definition}[Support-Dependent Bias and Variance]
+    For a given polynomial degree $p$ and support size $h$, define:
+    \begin{align}
+        B(h, x_0) & = \E[\hat{f}_h(x_0)] - f(x_0) \quad \text{(Bias)} \\
+        V(h, x_0) & = \Var[\hat{f}_h(x_0)] \quad \text{(Variance)}
+    \end{align}
+\end{definition}
+
+\begin{theorem}[Asymptotic Behavior]
+    \label{thm:asymptotic}
+    Under suitable regularity conditions on $f$ and the kernel weights:
+    \begin{align}
+        B(h, x_0) & = O(h^{p+1}) \quad \text{as } h \to 0 \\
+        V(h, x_0) & = O(h^{-1}) \quad \text{as } h \to 0
+    \end{align}
+\end{theorem}
+
+% NOTE: Added conceptual explanation
+This theorem reveals the fundamental trade-off: decreasing $h$ reduces bias but increases variance, while increasing $h$ has the opposite effect. The optimal choice depends on the local smoothness of $f$ around $x_0$.
+
+\subsection{Signal-Adaptive Support Selection}
+
+Consider a signal with varying local characteristics:
+
+\begin{itemize}
+    \item \textbf{Smooth regions}: Large derivatives are negligible, permitting larger support sizes without significant bias
+    \item \textbf{High-frequency regions}: Rapid variations necessitate smaller support to capture local behavior accurately
+    \item \textbf{Discontinuities}: Require asymmetric or minimal support to avoid crossing the discontinuity
+\end{itemize}
+
+\begin{remark}
+    The optimal support size $h^*(x_0)$ that minimizes $\MSE[\hat{f}_h(x_0)]$ satisfies:
+    \begin{equation}
+        \frac{\partial}{\partial h} \left[ B^2(h, x_0) + V(h, x_0) \right] = 0
+        \label{eq:optimal_h}
+    \end{equation}
+    This yields a location-dependent optimal support, motivating adaptive methods.
+\end{remark}
+
+\newpage
+
+\section{The Intersection of Confidence Intervals (ICI) Rule}
+
+\subsection{Theoretical Foundation}
+
+The ICI rule provides a data-driven approach to support selection based on statistical confidence intervals:
+
+\begin{definition}[Confidence Interval for LPA]
+    For a given support size $h$ and confidence parameter $\gamma > 0$, the confidence interval for $\hat{f}_h(x_0)$ is:
+    \begin{equation}
+        CI_h(x_0) = \left[ \hat{f}_h(x_0) - \gamma \sqrt{V(h, x_0)}, \hat{f}_h(x_0) + \gamma \sqrt{V(h, x_0)} \right]
+        \label{eq:confidence_interval}
+    \end{equation}
+\end{definition}
+
+% NOTE: Added probabilistic interpretation
+For Gaussian noise with known variance $\sigma^2$, choosing $\gamma = z_{\alpha/2}$ (the $\alpha/2$ quantile of the standard normal distribution) yields a $(1-\alpha)$ confidence interval.
+
+\subsection{The ICI Algorithm}
+
+\begin{theorem}[ICI Principle]
+    \label{thm:ici_principle}
+    Consider a sequence of support sizes $h_1 < h_2 < \cdots < h_K$. Define:
+    \begin{equation}
+        \mathcal{I}_k(x_0) = \bigcap_{j=1}^{k} CI_{h_j}(x_0)
+        \label{eq:intersection}
+    \end{equation}
+    The optimal scale $k^*(x_0)$ is chosen as:
+    \begin{equation}
+        k^*(x_0) = \max\{k : \mathcal{I}_k(x_0) \neq \emptyset\}
+        \label{eq:optimal_scale}
+    \end{equation}
+\end{theorem}
+
+\begin{algorithm}
+    \label{alg:ici}
+    \textbf{Input:} Signal $\{y_i\}_{i=1}^n$, polynomial degree $p$, scales $\{h_k\}_{k=1}^K$, parameter $\gamma$ \\
+    \textbf{Output:} Optimal scales $\{k^*(x_i)\}_{i=1}^n$ and estimates $\{\hat{f}(x_i)\}_{i=1}^n$
+
+    \begin{enumerate}
+        \item \textbf{Initialization:}
+              \begin{itemize}
+                  \item Set $L_0(x_i) = -\infty$, $U_0(x_i) = +\infty$ for all $i$
+                  \item Set $k^*(x_i) = 0$ for all $i$
+              \end{itemize}
+
+        \item \textbf{For each scale} $k = 1, 2, \ldots, K$:
+              \begin{enumerate}[label=(\alph*)]
+                  \item Compute LPA estimates $\hat{f}_{h_k}(x_i)$ for all $i$
+                  \item Compute variances $V(h_k, x_i) = \sigma^2 \sum_j h_{j,k}^2(x_i)$
+                  \item Calculate confidence bounds:
+                        \begin{align}
+                            l_k(x_i) & = \hat{f}_{h_k}(x_i) - \gamma\sqrt{V(h_k, x_i)} \\
+                            u_k(x_i) & = \hat{f}_{h_k}(x_i) + \gamma\sqrt{V(h_k, x_i)}
+                        \end{align}
+                  \item Update intersection bounds:
+                        \begin{align}
+                            L_k(x_i) & = \max\{L_{k-1}(x_i), l_k(x_i)\} \\
+                            U_k(x_i) & = \min\{U_{k-1}(x_i), u_k(x_i)\}
+                        \end{align}
+                  \item \textbf{If} $U_k(x_i) < L_k(x_i)$ and $k^*(x_i) = 0$:
+                        \begin{itemize}
+                            \item Set $k^*(x_i) = k - 1$
+                        \end{itemize}
+              \end{enumerate}
+
+        \item \textbf{Final estimates:} $\hat{f}(x_i) = \hat{f}_{h_{k^*(x_i)}}(x_i)$
+    \end{enumerate}
+\end{algorithm}
+
+\newpage
+
+\section{Extensions and Advanced Topics}
+
+\subsection{Directional LPA for Discontinuous Signals}
+
+When signals contain discontinuities, symmetric kernels produce significant artifacts. The solution involves directional estimation:
+
+\begin{definition}[Directional Kernels]
+    Define left and right directional kernels:
+    \begin{align}
+        h^L_i(x_0) & = h_i(x_0) \cdot \mathbf{1}_{x_i \leq x_0} \quad \text{(Left kernel)} \\
+        h^R_i(x_0) & = h_i(x_0) \cdot \mathbf{1}_{x_i > x_0} \quad \text{(Right kernel)}
+    \end{align}
+\end{definition}
+
+\subsection{Variance-Based Aggregation}
+
+Given multiple estimates $\{\hat{f}^{(m)}(x_0)\}_{m=1}^M$ with variances $\{V^{(m)}(x_0)\}_{m=1}^M$:
+
+\begin{theorem}[Optimal Linear Aggregation]
+    The minimum-variance linear combination is:
+    \begin{equation}
+        \hat{f}_{agg}(x_0) = \sum_{m=1}^{M} w_m(x_0) \hat{f}^{(m)}(x_0)
+        \label{eq:aggregation}
+    \end{equation}
+    where the optimal weights are:
+    \begin{equation}
+        w_m(x_0) = \frac{1/V^{(m)}(x_0)}{\sum_{j=1}^{M} 1/V^{(j)}(x_0)}
+        \label{eq:optimal_weights}
+    \end{equation}
+\end{theorem}
+
+\begin{proof}
+    The variance of the aggregated estimator is:
+    \begin{equation}
+        \Var[\hat{f}_{agg}(x_0)] = \sum_{m=1}^{M} w_m^2(x_0) V^{(m)}(x_0)
+    \end{equation}
+    Minimizing subject to $\sum_m w_m = 1$ yields the result via Lagrange multipliers.
+\end{proof}
+
+\subsection{Practical Considerations}
+
+\begin{enumerate}
+    \item \textbf{Parameter Selection:}
+          \begin{itemize}
+              \item Polynomial degree: $p \in \{0, 1, 2\}$ typically suffices
+              \item Scale progression: $h_k = h_1 \cdot \rho^{k-1}$ with $\rho \in [2, 3]$
+              \item Confidence parameter: $\gamma \in [2, 3]$ balances adaptation and stability
+          \end{itemize}
+
+    \item \textbf{Boundary Handling:}
+          Near boundaries, support sizes must be reduced to maintain sufficient observations, naturally handled by the ICI rule.
+
+    \item \textbf{Computational Efficiency:}
+          Pre-compute kernel matrices for each scale to enable efficient implementation.
+\end{enumerate}
+
+\section{Conclusion}
+
+The ICI rule provides a principled, data-driven approach to adaptive support selection in LPA, automatically balancing bias and variance based on local signal characteristics. This framework extends naturally to multidimensional signals and various kernel designs, forming a cornerstone of modern non-parametric estimation theory.
+
+\begin{remark}[Future Directions]
+    Extensions include:
+    \begin{itemize}
+        \item Multiscale decompositions with wavelet-like properties
+        \item Robust estimation under non-Gaussian noise
+        \item Online/recursive implementations for streaming data
+        \item Applications to image processing and computer vision
+    \end{itemize}
+\end{remark}
+
+\end{document}
