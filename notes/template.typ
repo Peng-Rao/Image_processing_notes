@@ -12,6 +12,9 @@
 #let shrink = $op("shrink")$
 #let Var = $op("Var")$
 #let sign = $op("sign")$
+#let diag = $op("diag")$
+#let MSE = $op("MSE")$
+#let Bias = $op("Bias")$
 
 #let nonum(eq) = math.equation(block: true, numbering: none, eq)
 #let firebrick(body) = text(fill: rgb("#b22222"), body)
