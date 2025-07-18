@@ -50,7 +50,7 @@ The choice of $rho$ fundamentally determines the robustness properties of the es
   caption: [Illustration of outlier influence on least squares fitting],
 )
 
-== Ordinary Least Squares for Line Fitting
+== Limitations of Vertical Distance Minimization
 We begin with the fundamental problem of fitting a straight line to a set of 2D points. The parametric form of a line is:
 $
   y = m x + b
@@ -60,7 +60,6 @@ $
   (m^*, b^*) = argmin_(m,b) sum_(i=1)^n (y_i - m x_i - b)^2
 $
 
-== Limitations of Vertical Distance Minimization
 The ordinary least squares approach measures error along the vertical axis, which introduces several fundamental limitations:
 + *Inability to fit vertical lines*: When the line approaches vertical ($m -> infinity$), the formulation breaks down as we cannot express $x$ as a function of $y$.
 + *Asymmetric treatment of variables*: The choice of dependent vs. independent variable artificially privileges one coordinate axis.
@@ -85,9 +84,14 @@ Rather than minimizing geometric distance (which leads to nonlinear optimization
   $ r_i^"alg"(bold(theta)) = a x_i + b y_i + c $
 ]
 
+#definition("Geometric Error")[
+  The geometric error is the perpendicular distance from the point to the line:
+  $ r_i^"geom"(bold(theta)) = (abs(a x_i + b y_i + c))/(sqrt(a^2 + b^2)) $
+]
+
 The relationship between algebraic and geometric errors is:
 $
-  r_i^"geom"(bold(theta)) = (abs(a x_i + b y_i + c))/(sqrt(a^2 + b^2)) = (abs(r_i^"alg"(bold(theta))))/(sqrt(a^2 + b^2))
+  r_i^"geom"(bold(theta)) = (abs(r_i^"alg"(bold(theta))))/(sqrt(a^2 + b^2))
 $
 
 === Constrained Least Squares Formulation
@@ -119,13 +123,44 @@ $
                                 & = norm(bold(Sigma) bold(V)^T bold(theta))_2^2 quad "(orthogonal invariance)" \
                                 & = norm(bold(Sigma) bold(w))_2^2 = sum_(i=1)^3 sigma_i^2 w_i^2
 $
-
 Since $norm(bold(theta))_2 = norm(bold(w))_2 = 1$, minimizing the objective requires placing all weight on the smallest singular value:
 $
   bold(w)^* = [0, 0, 1]^T => bold(theta)^* = bold(V) bold(w)^* = bold(v)_3
 $
-
 Numerical conditioning is crucial for stable DLT computation, especially when dealing with higher-order geometric entities.
+
+#algorithm-figure("Direct Linear Transformation (DLT)", vstroke: .5pt + luma(200), {
+  import algorithmic: *
+  Procedure([DLT], [data points ${(x_i, y_i)}_(i=1)^n$], {
+    Comment[*Input:* Data points ${(x_i, y_i)}_(i=1)^n$]
+    Comment[*Output:* Line parameters $bold(theta)^* = [a, b, c]^T$]
+    LineBreak
+    Comment[Construct design matrix:]
+    Assign[$bold(A)$][$mat(
+        x_1, y_1, 1;
+        x_2, y_2, 1;
+        dots.v, dots.v, dots.v;
+        x_n, y_n, 1
+      ) in RR^(n times 3)$]
+    LineBreak
+    Comment[Compute SVD of design matrix:]
+    Assign[$bold(U), bold(Sigma), bold(V)$][$"SVD"(bold(A))$]
+    Comment[where $bold(A) = bold(U) bold(Sigma) bold(V)^T$]
+    LineBreak
+    Comment[Extract solution from smallest singular vector:]
+    Assign[$bold(theta)^*$][$bold(v)_3$]
+    Comment[last column of $bold(V)$ corresponding to smallest singular value]
+    LineBreak
+    Comment[Optional: Normalize solution]
+    If("normalization desired", {
+      Assign[$bold(theta)^*$][$bold(theta)^* / norm(bold(theta)^*)_2$]
+    })
+    LineBreak
+    Return[$bold(theta)^*$]
+  })
+})
+
+#pagebreak()
 
 === Preconditioning for Numerical Stability
 Numerical conditioning is crucial for stable DLT computation, especially when dealing with higher-order geometric entities.
@@ -134,30 +169,34 @@ Numerical conditioning is crucial for stable DLT computation, especially when de
   import algorithmic: *
   Procedure([Normalized-DLT], [data points ${(x_i, y_i)}_(i=1)^n$], {
     Comment[*Input:* Data points ${(x_i, y_i)}_(i=1)^n$]
+    LineBreak
     Comment[*Output:* Line parameters $bold(theta)^* = [a, b, c]^T$]
     LineBreak
-    Comment[1. Compute data centroid and scale:]
+    Comment[Compute data centroid and scale:]
     Assign[$bar(x)$][$1/n sum_(i=1)^n x_i$]
+    LineBreak
     Assign[$bar(y)$][$1/n sum_(i=1)^n y_i$]
     LineBreak
-    Comment[2. Apply normalization transformation:]
+    Comment[Apply normalization transformation:]
     LineBreak
     Assign[$bold(T)$][$mat(s_x, 0, -s_x bar(x); 0, s_y, -s_y bar(y); 0, 0, 1)$]
     Comment[where $s_x$ and $s_y$ are chosen such that the normalized data has unit variance]
     LineBreak
-    Comment[3. Solve DLT for normalized points:]
+    Comment[Solve DLT for normalized points:]
     For($i = 1, dots, n$, {
       LineBreak
       Assign[$tilde(bold(p))_i$][$bold(T) mat(x_i; y_i; 1)$]
     })
     Assign[$tilde(bold(theta))^*$][$"DLT"({tilde(bold(p))_i})$]
     LineBreak
-    Comment[4. Denormalize the solution:]
+    Comment[Denormalize the solution:]
     Assign[$bold(theta)^*$][$bold(T)^T tilde(bold(theta))^*$]
     LineBreak
     Return[$bold(theta)^*$]
   })
 })
+
+#pagebreak()
 
 == Robust Estimation Methods
 #definition("Breakdown Point")[
@@ -216,11 +255,10 @@ $
     Comment[*Input:* Data points $cal(D)$, inlier threshold $epsilon$, confidence $p$]
     Comment[*Output:* Model parameters $bold(theta)^*$]
     LineBreak
-    Comment[1. Initialize:]
+    Comment[Initialize:]
     Assign[$cal(C)^*$][$emptyset$]
     Assign[$k$][$0$]
     LineBreak
-    Comment[2. while $k < N$ do:]
     While($k < N$, {
       Comment[(a) Randomly sample minimal set $cal(S) subset cal(D)$ with $abs(cal(S)) = m$]
       Assign[$cal(S)$][randomly sample $m$ points from $cal(D)$]
@@ -240,7 +278,7 @@ $
       Assign[$k$][$k + 1$]
     })
     LineBreak
-    Comment[3. Refine:]
+    Comment[Refine:]
     Assign[$bold(theta)^*$][$"LeastSquares"(cal(C)^*)$]
     LineBreak
     Return[$bold(theta)^*$]
