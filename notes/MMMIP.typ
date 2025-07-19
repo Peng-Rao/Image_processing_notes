@@ -21,10 +21,6 @@
   background-color: "#DDEEDD",
 )
 
-#set math.mat(delim: "[")
-#set math.vec(delim: "[")
-#set math.equation(supplement: [Eq.])
-
 #include "chapters/chapter1.typ"
 #include "chapters/chapter2.typ"
 #include "chapters/chapter3.typ"
