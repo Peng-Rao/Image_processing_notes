@@ -8,15 +8,17 @@ The solution to the sparsity limitation lies in abandoning the constraint of ort
 
 #definition("Overcomplete Dictionary")[
   An _overcomplete dictionary_ is a matrix $bold(D) in RR^(n times m)$ with $m > n$ such that:
-
-  $ "span"{bold(d)_1, bold(d)_2, ..., bold(d)_m} = RR^n $
-
+  $
+    "span"{bold(d)_1, bold(d)_2, ..., bold(d)_m} = RR^n
+  $
   where $bold(d)_i$ are the columns of $bold(D)$.
 ]
 
 For the DCT-spike example, we construct the overcomplete dictionary by concatenating the DCT basis with the *canonical basis*:
 
-$ bold(D) = mat(bold(D)_"DCT", bold(I)) in RR^(n times 2n) $
+$
+  bold(D) = mat(bold(D)_"DCT", bold(I)) in RR^(n times 2n)
+$
 
 This construction ensures that:
 - Signals sparse in DCT domain remain sparse
@@ -28,7 +30,9 @@ This construction ensures that:
 
   The representation with respect to the overcomplete dictionary is:
 
-  $ bold(s) = bold(D) mat(bold(x)_0; lambda bold(e)_j) $
+  $
+    bold(s) = bold(D) mat(bold(x)_0; lambda bold(e)_j)
+  $
 
   The coefficient vector $mat(bold(x)_0; lambda bold(e)_j) in RR^(2n)$ is sparse, containing only the non-zero entries of $bold(x)_0$ plus the single entry $lambda$ at position $j$ in the second block.
 ]
@@ -37,7 +41,9 @@ This construction ensures that:
 #theorem("Rouché-Capelli Theorem")[
   Consider the linear system $bold(D)bold(x) = bold(s)$ where $bold(D) in RR^(n times m)$ and $bold(s) in RR^n$. The system admits a solution if and only if:
 
-  $ "rank"(bold(D)) = "rank"(mat(bold(D), bold(s))) $
+  $
+    "rank"(bold(D)) = "rank"(mat(bold(D), bold(s)))
+  $
 ] <thm:rouche>
 
 When $m > n$ and $"rank"(bold(D)) = n$, the system has infinitely many solutions forming an affine subspace of dimension $m - n$.
@@ -53,9 +59,9 @@ The abundance of solutions in overcomplete systems necessitates additional crite
 == Regularization and Sparse Recovery
 #definition("Regularization")[
   Given an *ill-posed* problem $bold(D)bold(x) = bold(s)$ with multiple solutions, _regularization_ involves solving:
-
-  $ hat(bold(x)) = arg min_(bold(x)) J(bold(x)) quad "subject to" quad bold(D)bold(x) = bold(s) $
-
+  $
+    hat(bold(x)) = arg min_(bold(x)) J(bold(x)) quad "subject to" quad bold(D)bold(x) = bold(s)
+  $
   where $J: RR^m -> RR_+$ is a regularization functional encoding our prior knowledge about the desired solution.
 ]
 

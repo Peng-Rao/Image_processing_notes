@@ -31,16 +31,14 @@ This definition captures the fundamental property that no vector in the set can 
 
 *Proof: *
 Suppose $bold(s)$ admits two different representations:
-
 $
   bold(s) & = sum_(i=1)^n x_i bold(e)_i \
   bold(s) & = sum_(i=1)^n y_i bold(e)_i
 $
-
 Subtracting these equations:
-
-$ bold(0) = sum_(i=1)^n (x_i - y_i) bold(e)_i $
-
+$
+  bold(0) = sum_(i=1)^n (x_i - y_i) bold(e)_i
+$
 By linear independence, $(x_i - y_i) = 0$ for all $i$, implying $x_i = y_i$ for all $i$. Therefore, the representation is unique.
 
 #pagebreak()
@@ -48,17 +46,22 @@ By linear independence, $(x_i - y_i) = 0$ for all $i$, implying $x_i = y_i$ for 
 == Orthogonal Vectors
 #definition("Orthonormal Basis")[
   A set of vectors ${bold(e)_1, bold(e)_2, ..., bold(e)_n} subset RR^n$ forms an _orthonormal basis_ if:
-
   + $angle.l bold(e)_i, bold(e)_j angle.r = delta_(i j)$ (orthonormality condition)
   + $"span"{bold(e)_1, bold(e)_2, ..., bold(e)_n} = RR^n$ (spanning condition)
-
   where $delta_(i j)$ is the Kronecker delta.
+  Kronecker delta is defined as:
+  $
+    delta_(i j) = cases(
+      1 space "if" i = j,
+      0 space "if" i != j
+    )
+  $
 ]
 
 The power of orthonormal bases lies in their computational convenience. For any signal $bold(s) in RR^n$ and orthonormal basis $bold(D) = [bold(e)_1, bold(e)_2, ..., bold(e)_n]$, the coefficient computation is straightforward:
-
-$ bold(x) = bold(D)^T bold(s) $
-
+$
+  bold(x) = bold(D)^T bold(s)
+$
 where $bold(x) = (x_1, x_2, ..., x_n)^T$ and $x_i = angle.l bold(e)_i, bold(s) angle.r$.
 
 == The $ell_0$ Norm

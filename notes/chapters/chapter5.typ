@@ -2,6 +2,9 @@
 #import "@preview/cetz:0.3.4": canvas, draw
 #import "@preview/cetz-plot:0.1.1": chart, plot
 #import "../template.typ": *
+#import "@preview/algorithmic:1.0.2"
+#import algorithmic: algorithm-figure, style-algorithm
+#show: style-algorithm
 
 = Sparse Coding In $ell_0$ sense
 == The Sparse Coding Problem
@@ -130,22 +133,6 @@ Assuming a billion operations per second, exhaustive search would take more time
 
 #pagebreak()
 
-== Greedy Algorithms for Sparse Coding
-Given the computational intractability of exact $ell_0$ minimization, we turn to greedy approximation algorithms that provide computationally feasible solutions.
-
-A *greedy algorithm* for sparse coding makes locally optimal choices at each iteration without reconsidering previous decisions, building up the solution incrementally by adding one dictionary atom at a time.
-
-#example("Coin Change Analogy")[
-  The greedy approach mirrors the coin change problem:
-  - *Goal*: Minimize the number of coins to make change
-  - *Greedy strategy*: Always use the largest denomination possible
-  - *Limitation*: Optimal only for specially designed coin systems
-
-  For standard currency systems (e.g., {1, 2, 5, 10, 20, 50}), greedy gives optimal solutions. However, for pathological systems (e.g., {1, 3, 4}), greedy fails: making change for 6 units gives greedy solution 4+1+1 (3 coins) vs. optimal 3+3 (2 coins).
-] <ex:coin_change>
-
-#pagebreak()
-
 == Matching Pursuit Algorithm
 The *Matching Pursuit (MP)* algorithm embodies the greedy principle for sparse coding:
 *Input:* Signal $bold(y)$, dictionary $bold(D)$ (normalized), stopping criterion \
@@ -270,9 +257,8 @@ The OMP algorithm embodies the greedy principle for sparse coding with orthogona
 
 + *Orthogonal Projection:* Solve the least squares problem over the active set:
   $
-    bold(alpha)_Omega^((k+1)) = arg min_(bold(z)) norm(bold(D)_Omega bold(z) - bold(y))_2^2
+    bold(alpha)_Omega^((k+1)) = arg min_(bold(alpha)) norm(bold(D)_Omega bold(alpha) - bold(y))_2^2
   $ <eq:omp_projection>
-
   where $bold(D)_Omega$ is the sub-matrix of $bold(D)$ with columns indexed by $Omega^((k+1))$.
 
 + *Solution Update:*
@@ -301,29 +287,59 @@ The integration of OMP into image denoising frameworks requires careful consider
 
 Natural images exhibit strong local correlations but varying global statistics. The patch-based approach decomposes the image into overlapping patches, each processed independently:
 
-*Input:* Noisy image $bold(Y) in RR^(N times M)$, dictionary $bold(D) in RR^(n times m)$, sparsity level $s$ \
-*Output:* Denoised image $hat(bold(Y))$
+#algorithm-figure(
+  "OMP-Based Image Denoising",
+  vstroke: .5pt + luma(200),
+  {
+    import algorithmic: *
+    Procedure(
+      [OMP-Image-Denoising],
+      ([$bold(Y)$], [$bold(D)$], [$s$]),
+      {
+        Comment[*Input:* Noisy image $bold(Y) in RR^(N times M)$, dictionary $bold(D) in RR^(n times m)$, sparsity level $s$]
+        Comment[*Output:* Denoised image $hat(bold(Y))$]
+        LineBreak
+        Comment[Patch Extraction:]
+        Comment[For image $bold(Y) in RR^(N times M)$, extract patches $(bold(y)_i$, $i = 1, dots, P)$, $P$ is the number of patches]
+        Comment[where each $bold(y)_i in RR^n$ represents a vectorized $sqrt(n) times sqrt(n)$ patch]
+        For($i = 1, dots, P$, {
+          Assign[$bold(y)_i$][extract $sqrt(n) times sqrt(n)$ patch and vectorize]
+        })
+        LineBreak
+        Comment[Mean Computation and Centering:]
+        For($i = 1, dots, P$, {
+          Comment[Compute mean: $mu_i = 1/n sum_(j=1)^n y_(i,j)$]
+          Assign[$mu_i$][$1/n sum_(j=1)^n y_(i,j)$]
+          LineBreak
+          Comment[Center patch: $tilde(bold(y))_i = bold(y)_i - mu_i bold(1)$]
+          Assign[$tilde(bold(y))_i$][$bold(y)_i - mu_i bold(1)$]
+          Comment[where $bold(1) in RR^n$ is the vector of all ones]
+        })
+        LineBreak
+        Comment[Sparse Coding:]
+        For($i = 1, dots, P$, {
+          Comment[Apply OMP to each mean-centered patch]
+          Assign[$hat(bold(alpha))_i$][$"OMP"(bold(D), tilde(bold(y))_i, s)$]
+        })
+        LineBreak
+        Comment[Reconstruction:]
+        For($i = 1, dots, P$, {
+          Comment[Compute denoised patches by adding back the mean]
+          Assign[$hat(bold(x))_i$][$bold(D) hat(bold(alpha))_i + mu_i bold(1)$]
+        })
+        LineBreak
+        Comment[Aggregation:]
+        Comment[Reconstruct the full image by averaging overlapping reconstructions]
+        Comment[at each pixel location]
+        Assign[$hat(bold(Y))$][$"Aggregate"({hat(bold(x))_i}_(i=1)^P)$]
+        LineBreak
+        Return[$hat(bold(Y))$]
+      },
+    )
+  },
+)
 
-+ *Patch Extraction:* For image $bold(Y) in RR^(N times M)$, extract patches $(bold(y)_i)_(i=1)^P$ where each $bold(y)_i in RR^n$ represents a vectorized $sqrt(n) times sqrt(n)$ patch.
-
-+ *Mean Computation and Centering:* For each patch $bold(y)_i$:
-  $
-                mu_i & = 1/n sum_(j=1)^n y_(i,j)  \
-    tilde(bold(y))_i & = bold(y)_i - mu_i bold(1)
-  $
-  where $bold(1) in RR^n$ is the vector of all ones.
-
-+ *Sparse Coding:* Apply OMP to each mean-centered patch:
-  $
-    hat(bold(alpha))_i = "OMP"(bold(D), tilde(bold(y))_i, s)
-  $
-
-+ *Reconstruction:* Compute denoised patches by adding back the mean:
-  $
-    hat(bold(x))_i = bold(D) hat(bold(alpha))_i + mu_i bold(1)
-  $
-
-+ *Aggregation:* Reconstruct the full image by averaging overlapping reconstructions at each pixel location.
+#pagebreak()
 
 == Linearity Analysis of Sparse Coding Algorithms
 
@@ -335,6 +351,22 @@ A fundamental question in sparse coding concerns the linearity properties of the
     cal(A)(alpha bold(y)_1 + beta bold(y)_2) = alpha cal(A)(bold(y)_1) + beta cal(A)(bold(y)_2)
   $
 ] <def:linear_algorithm>
+
+=== Nonlinearity of OMP
+Despite the final solution taking the form of a linear projection:
+$
+  hat(bold(x))_(cal(S)) = (bold(D)_(cal(S))^T bold(D)_(cal(S)))^(-1) bold(D)_(cal(S))^T bold(y)
+$
+the OMP algorithm is fundamentally nonlinear due to the adaptive selection of the support set $cal(S)$.
+
+#proposition("Nonlinearity of OMP")[
+  The OMP algorithm is nonlinear because the support selection depends on the input signal: $cal(S)(bold(y))$ is a function of $bold(y)$.
+] <prop_omp_nonlinear>
+
+Consider two signals $bold(y)_1$ and $bold(y)_2$ that would result in different support sets under OMP. The support of $bold(y)_1 + bold(y)_2$ may differ from the union of individual supports, violating the linearity condition.
+
+==== Comparison with Linear Denoising Methods
+Fixed linear methods like convolution-based filtering or PCA projection onto the first $k$ principal components are linear but less adaptive. The nonlinearity of OMP enables signal-dependent subspace selection, providing superior performance for sparse signals.
 
 #pagebreak()
 

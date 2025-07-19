@@ -1,6 +1,8 @@
 #import "@local/simple-note:0.0.1": attention, example, simple-note, zebraw
 #show: simple-note.with(
-  title: [ Image Processing ],
+  title: [
+    Mathematical Models and Methods For Image Processing
+  ],
   date: datetime(year: 2025, month: 2, day: 17),
   authors: (
     (
