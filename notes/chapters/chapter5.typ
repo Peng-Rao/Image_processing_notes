@@ -399,6 +399,8 @@ The following theorem provides conditions under which the solution to the $ell_0
     "spark"(bold(D)) <= norm(hat(bold(x)) - tilde(bold(x)))_0
   $
 
+  The definition of spark see @matrix-spark.
+
   Using the triangle inequality for the $ell_0$ pseudo-norm:
   $
     norm(hat(bold(x)) - tilde(bold(x)))_0 <= norm(hat(bold(x)))_0 + norm(tilde(bold(x)))_0

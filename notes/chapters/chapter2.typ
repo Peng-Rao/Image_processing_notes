@@ -104,20 +104,19 @@ Properties of the this estimator:
 
 Consider the classical approach of estimating pixel intensities through local averaging. For a pixel at location $(i,j)$, a naive estimate would be:
 $
-  hat(x)_(i,j) = 1/(|U_(i,j)|) sum_((k,l) in U_(i,j)) y_(k,l)
+  hat(y)_(i,j) = 1/(|U_(i,j)|) sum_((k,l) in U_(i,j)) z_(k,l)
 $ <simple_average>
 where $U_(i,j)$ denotes a neighborhood around pixel $(i,j)$, and $|U_(i,j)|$ is its cardinality.
 
 This approach is equivalent to convolution with a normalized box kernel:
 $
-  hat(x) = y * h
+  hat(y) = z * h
 $
 where $h$ is the box kernel with support $U_(i,j)$.
 
 The primary limitation of local averaging becomes apparent near image discontinuities. Consider an ideal edge scenario where:
-
 $
-  x_(i,j) = cases(
+  z_(i,j) = cases(
     a & "if " (i,j) in Omega_1,
     b & "if " (i,j) in Omega_2
   )
@@ -126,11 +125,10 @@ where $Omega_1$ and $Omega_2$ are disjoint regions separated by an edge, and $a 
 
 For a pixel $(i,j)$ near the edge boundary, the local average becomes:
 $
-  hat(x)_(i,j) &= 1/(|U_(i,j)|) (sum_((k,l) in U_(i,j) inter Omega_1) y_(k,l) + sum_((k,l) in U_(i,j) inter Omega_2) y_(k,l)) \
+  hat(y)_(i,j) &= 1/(|U_(i,j)|) (sum_((k,l) in U_(i,j) inter Omega_1) y_(k,l) + sum_((k,l) in U_(i,j) inter Omega_2) y_(k,l)) \
   &approx (|Omega_1 inter U_(i,j)|)/(|U_(i,j)|) a + (|Omega_2 inter U_(i,j)|)/(|U_(i,j)|) b
 $
 This results in a blurred edge transition, motivating the need for adaptive filtering strategies.
-
 
 #pagebreak()
 
@@ -138,14 +136,16 @@ This results in a blurred edge transition, motivating the need for adaptive filt
 The Non-Local Means (NLM) algorithm addresses the limitations of local averaging by exploiting the _self-similarity_ property of natural images. *The key insight is that similar patches exist throughout the image, not just in local neighborhoods.*
 
 #definition("Self-Similarity Prior")[
-  For a natural image $x$, there exist multiple patches ${P_k}$ such that:
-  $ ||P_i - P_j||_2 < epsilon $
+  For a natural image $bold(Z)$, there exist multiple patches ${P_k}$ such that:
+  $
+    ||P_i - P_j||_2 < epsilon
+  $
   for some small threshold $epsilon > 0$, where $P_k$ represents a patch extracted from the image.
 ] <self_similarity>
 
 The NLM estimate for pixel $(i,j)$ is given by:
 $
-  hat(x)_(i,j) = sum_((k,l) in S_(i,j)) w_(i,j)(k,l) dot y_(k,l)
+  hat(y)_(i,j) = sum_((k,l) in S_(i,j)) w_(i,j)(k,l) dot z_(k,l)
 $ <nlm_estimate>
 where $S_(i,j)$ represents the search window around pixel $(i,j)$, and $w_(i,j)(k,l)$ are the similarity weights.
 
@@ -163,13 +163,15 @@ where:
 === Patch Distance Computation
 The patch distance is computed as:
 $
-  d^2(P_(i,j), P_(k,l)) = 1/(|P|) sum_((u,v) in P) |y_(i+u,j+v) - y_(k+u,l+v)|^2
+  d^2(P_(i,j), P_(k,l)) = 1/(|P|) sum_((u,v) in P) |z_(i+u,j+v) - z_(k+u,l+v)|^2
 $ <patch_distance>
 where $P$ represents the patch domain and $|P|$ is the number of pixels in the patch.
 
 *Noise-Aware Distance*
 In the presence of noise, the distance can be corrected as:
-$ d^2_"corrected"(P_(i,j), P_(k,l)) = max(d^2(P_(i,j), P_(k,l)) - 2sigma^2, 0) $ <noise_corrected_distance>
+$
+  d^2_"corrected"(P_(i,j), P_(k,l)) = max(d^2(P_(i,j), P_(k,l)) - 2sigma^2, 0)
+$ <noise_corrected_distance>
 This correction accounts for the noise contribution to the patch distance.
 
 === Normalization and Properties
@@ -178,12 +180,11 @@ $ Z_(i,j) = sum_((k,l) in S_(i,j)) exp(-(d^2(P_(i,j), P_(k,l)))/(h^2)) $ <normal
 
 #theorem("NLM Consistency")[
   For a noiseless image, the NLM estimate satisfies:
-  $ lim_(sigma -> 0) hat(x)_(i,j) = x_(i,j) $
+  $
+    lim_(sigma -> 0) hat(y)_(i,j) = y_(i,j)
+  $
+  *Proof:* As $sigma -> 0$, the patch distances approach their true values, and the weight distribution becomes increasingly concentrated around patches identical to the reference patch.
 ] <nlm_consistency>
-
-
-*Proof:*
-As $sigma -> 0$, the patch distances approach their true values, and the weight distribution becomes increasingly concentrated around patches identical to the reference patch.
 
 === Algorithm Framework
 #algorithm-figure("Non-Local Means Algorithm", vstroke: .5pt + luma(200), {

@@ -92,7 +92,7 @@ Let us now interpret $ell_0$-sparsity geometrically in $RR^3$.
 
 #pagebreak()
 
-== Matrix Spark
+== Matrix Spark <matrix-spark>
 The concept of matrix spark provides the theoretical foundation for understanding when sparse solutions are unique.
 
 #definition("Matrix Spark")[
@@ -129,3 +129,71 @@ The lower bound follows from the definition. For the upper bound, consider that 
 
 *Proof:*
 If $bold(D) bold(x) = bold(0)$ with $bold(x) != bold(0)$, then $sum_(i in "supp"(bold(x))) x_i bold(d)_i = bold(0)$, showing that the columns ${bold(d)_i : i in "supp"(bold(x))}$ are linearly dependent. By definition of spark, $"spark"(bold(D)) <= |"supp"(bold(x))| = norm(bold(x))_0$.
+
+#pagebreak()
+
+= Appendix: Optimization Theory for Non-Differentiable Functions
+== Lipschitz Continuity <lipschitz-continuity>
+#definition("Lipschitz Continuous Gradient")[
+  A function $f: RR^n -> RR$ has an $L$-*Lipschitz continuous gradient* if there exists a constant $L > 0$ such that:
+  $
+    norm(nabla f(bold(x)) - nabla f(bold(y)))_2 <= L norm(bold(x) - bold(y))_2
+  $
+  for all $bold(x), bold(y) in RR^n$. The smallest such constant $L$ is called the Lipschitz constant of the gradient.
+]
+
+#definition([Lipschitz Continuity of Gradient])[
+  A function $f$ has $L$-Lipschitz continuous gradient if:
+  $
+    norm(nabla f(bold(x)) - nabla f(bold(y)))_2 <= L norm(bold(x) - bold(y))_2, quad forall bold(x), bold(y) in RR^n
+  $
+]
+
+For the quadratic function $f(bold(x)) = 1/2 norm(bold(A)bold(x) - bold(b))_2^2$:
+
+#proposition("Lipschitz Constant for Quadratic Functions")[
+  For the quadratic function $f(bold(x)) = 1/2 norm(bold(A)bold(x) - bold(b))_2^2$, the Lipschitz constant can be derived as follows:
+  $
+    L = norm(bold(A)^T bold(A))_2 = lambda_"max"(bold(A)^T bold(A))
+  $
+  where $lambda_"max"$ denotes the largest eigenvalue.
+
+  *Proof: *
+  The gradient is $nabla f(bold(x)) = bold(A)^T (bold(A)bold(x) - bold(b))$. Thus:
+  $
+    norm(nabla f(bold(x)) - nabla f(bold(y)))_2 & = norm(bold(A)^T bold(A)(bold(x) - bold(y)))_2              \
+                                                & <= norm(bold(A)^T bold(A))_2 norm(bold(x) - bold(y))_2      \
+                                                & = lambda_"max"(bold(A)^T bold(A)) norm(bold(x) - bold(y))_2
+  $
+  where we used the fact that the spectral norm equals the largest eigenvalue for symmetric positive semidefinite matrices.
+]
+
+#pagebreak()
+
+== Majorization-Minimization <majorization-minimization>
+For smooth convex functions, we can construct quadratic majorizers that facilitate optimization (subgradient methods).
+
+#lemma("Descent Lemma")[
+  Let $f: RR^n -> RR$ be a convex, differentiable function with Lipschitz continuous gradient. Then for any $bold(x)_k in RR^n$, there exists $L > 0$ such that:
+  $
+    f(bold(x)) <= Q_L (bold(x); bold(x)_k) = f(bold(x)_k) + gradient f(bold(x)_k)^T (bold(x) - bold(x)_k) + L/2 norm(bold(x) - bold(x)_k)_2^2
+  $
+  for all $bold(x) in RR^n$.
+]
+
+#definition("Majorization-Minimization Algorithm")[
+  Given a convex function $f$, the majorization-minimization approach generates a sequence ${bold(x)_k}$ by:
+  $
+    bold(x)_(k+1) &= arg min_(bold(x)) Q_L (bold(x); bold(x)_k) \
+    &= arg min_(bold(x)) [f(bold(x)_k) + gradient f(bold(x)_k)^T (bold(x) - bold(x)_k) + L/2 norm(bold(x) - bold(x)_k)_2^2]
+  $
+]
+
+Minimizing the majorizer $Q_L (bold(x); bold(x)_k)$ with respect to $bold(x)$:
+$
+  gradient_(bold(x)) Q_L (bold(x); bold(x)_k) & = gradient f(bold(x)_k) + L(bold(x) - bold(x)_k) = bold(0) \
+                             => bold(x)_(k+1) & = bold(x)_k - 1/L gradient f(bold(x)_k)
+$
+This recovers the standard gradient descent update with step size $gamma = 1/L$.
+
+For a convex, differentiable function $f$ with Lipschitz continuous gradient, the gradient descent algorithm converges to the global minimum.
